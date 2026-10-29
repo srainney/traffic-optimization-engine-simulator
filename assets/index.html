@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traffic Optimization Engine Simulator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="viz-root app">
+  <header class="topbar">
+    <div>
+      <h1>Traffic Optimization Engine Simulator</h1>
+      <p class="sub">Traffic Shaping + Multi-Tenancy: how prioritized messages share each sender type's egress on the way to carrier queues</p>
+    </div>
+    <div class="run-controls">
+      <a id="view-source" class="btn ghost" href="https://github.com/srainney/traffic-optimization-engine-simulator" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View source
+      </a>
+      <label class="speed">Speed
+        <select id="speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+        </select>
+      </label>
+      <button id="btn-reset" class="btn ghost" type="button">Reset</button>
+      <button id="btn-start" class="btn primary" type="button">▶ Start simulation</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="panel">
+      <fieldset id="config">
+        <section class="card">
+          <h2>Scenario</h2>
+          <div class="row">
+            <label>Preset
+              <select id="preset"></select>
+            </label>
+          </div>
+          <div class="preset-actions">
+            <button type="button" class="btn small ghost" id="preset-save">Save as preset…</button>
+            <button type="button" class="btn small ghost" id="preset-update" title="Overwrite the selected saved preset with the current settings">Update</button>
+            <button type="button" class="btn small ghost" id="preset-delete">Delete</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Traffic Shaping</h2>
+          <div class="seg" id="ts-mode" role="radiogroup">
+            <button type="button" data-mode="none">None</button>
+            <button type="button" data-mode="weighted">Weighted</button>
+          </div>
+          <p class="hint" id="ts-hint"></p>
+          <div id="ts-weights" class="weights"></div>
+          <details>
+            <summary>MessageIntent → Service Level mapping</summary>
+            <div id="ts-mapping" class="mapping"></div>
+          </details>
+        </section>
+
+        <section class="card">
+          <h2>Multi-Tenancy</h2>
+          <div class="seg" id="mt-mode" role="radiogroup">
+            <button type="button" data-mode="none">None</button>
+            <button type="button" data-mode="even">Even</button>
+            <button type="button" data-mode="weighted">Weighted</button>
+          </div>
+          <p class="hint" id="mt-hint"></p>
+          <div id="mt-tiers"></div>
+          <h3>Subaccounts</h3>
+          <div id="subaccounts"></div>
+          <button type="button" class="btn small ghost" id="add-sub">+ Add subaccount</button>
+        </section>
+
+        <section class="card">
+          <h2>Carriers by sender type</h2>
+          <p class="hint">Each sender type has one <b>egress MPS</b>, the downstream total shared by all of its carriers. Traffic is spread evenly across the carriers.</p>
+          <div class="tabs" id="st-tabs"></div>
+          <div id="carriers"></div>
+        </section>
+
+        <section class="card">
+          <h2>Traffic</h2>
+          <p class="hint">Message streams sent by each subaccount. Time is simulated seconds.</p>
+          <div id="streams"></div>
+          <button type="button" class="btn small ghost" id="add-stream">+ Add stream</button>
+        </section>
+      </fieldset>
+    </aside>
+
+    <main class="main">
+      <div class="stats" id="stats"></div>
+      <div class="legend" id="legend"></div>
+      <div class="stage-wrap" id="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div class="stage-empty" id="stage-empty"><span>Configure the scenario, then press <b>Start simulation</b>.</span></div>
+      </div>
+
+      <div class="charts">
+        <section class="card chart-card">
+          <h2>Messages waiting in queue, by Service Level</h2>
+          <div id="depth-chart" class="chart"></div>
+        </section>
+        <section class="card chart-card">
+          <h2>Time spent in queue</h2>
+          <div id="latency-table"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="tooltip" id="tooltip" hidden></div>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

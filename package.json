@@ -1,0 +1,9 @@
+{
+  "name": "traffic-optimization-engine-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser simulator for Twilio Traffic Shaping and Multi-Tenancy",
+  "scripts": {
+    "deploy": "twilio serverless:deploy"
+  }
+}
