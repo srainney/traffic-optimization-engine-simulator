@@ -10,16 +10,17 @@
 //
 // At every level, a node's share is its weight over the summed weights of the
 // siblings that are currently *sending* (an active stream or messages waiting).
-// The share does not depend on send rate: with SL weights 50/30/20 and SL1 +
-// SL3 sending, SL1 is allocated 50/70 = 71.4% and SL3 20/70 = 28.6%, even if
-// SL1 only sends 1 msg/s. A node that stops sending drops out and its share
-// is split among the remaining senders; a lone sender gets 100%.
+// With SL weights 50/30/20 and SL1 + SL3 both backlogged, SL1 drains at
+// 50/70 = 71.4% and SL3 at 20/70 = 28.6%; a lone sender gets 100%.
 //
-// Allocation is a guarantee, not a cap: capacity a sending node doesn't use
-// (its queue ran dry) is lent to nodes that still have messages waiting —
-// siblings first, then up the hierarchy — split by the same weights. So a
-// node's egress can exceed its allocation while it borrows, and the sender
-// type's egress stays at its full MPS while anything is queued.
+// Nothing is reserved: capacity a node can't use (its queue ran dry) goes to
+// nodes that still have messages waiting, siblings first, then up the
+// hierarchy, split by the same weights. The sender type's egress stays at its
+// full MPS while anything is queued.
+//
+// A lane's "alloc" is the maximum it could achieve at this moment: what it
+// would get if it had unlimited messages waiting, given what every other lane
+// is actually sending right now. It is never a guarantee; egress never exceeds it.
 
 const SENDER_TYPES = [
   { id: 'shortcode', label: 'Short Code', defaultMps: 100 },
@@ -63,16 +64,9 @@ class Queue {
   }
 }
 
-// Split `capacity` across sending nodes {w, active} in proportion to weight;
-// sets n.alloc (0 for nodes that aren't sending).
-function weightedShare(nodes, capacity) {
-  const W = nodes.reduce((sum, n) => sum + (n.active ? Math.max(n.w, 1e-6) : 0), 0);
-  for (const n of nodes) n.alloc = n.active && W > 0 ? (capacity * Math.max(n.w, 1e-6)) / W : 0;
-}
-
 // Weighted max-min fair split of `capacity` across nodes {w, d}, never giving
 // a node more than its demand d; sets n.extra. Whatever one node can't use is
-// re-split among the others, which is how unused share gets lent.
+// re-split among the others, which is how unused capacity moves to busy lanes.
 function waterfill(nodes, capacity) {
   for (const n of nodes) n.extra = 0;
   let remaining = capacity;
@@ -201,75 +195,58 @@ class Simulation {
     if (this.onArrive) this.onArrive(m, cq, leaf);
   }
 
-  serve(cq, dt) {
-    for (const g of cq.groups) {
-      g.active = false;
-      for (const tier of g.tiers) {
-        tier.active = false;
-        for (const t of tier.tenants) {
-          t.active = t.leaf.sending || t.leaf.q.length > 0;
-          tier.active = tier.active || t.active;
-        }
-        g.active = g.active || tier.active;
-      }
-    }
-    // 1. Allocation (what each node is guaranteed): weight over the summed
-    //    weights of sending siblings. Independent of send rate; shown in the UI.
-    const budget = cq.mps * dt;
-    weightedShare(cq.groups, budget);
-    for (const g of cq.groups) {
-      weightedShare(g.tiers, g.alloc);
-      for (const tier of g.tiers) {
-        weightedShare(tier.tenants, tier.alloc);
-        for (const t of tier.tenants) t.leaf.allocMps = t.alloc / dt;
-      }
-    }
-
-    // 2a. Live egress readout (MPS): the same weighted split in rate space. A
-    //     backlogged lane can take any amount; a lane that is keeping up only
-    //     needs its current ingress. Recomputed every tick, so when a level
-    //     stops sending its share moves to the others immediately.
-    const tickDemand = t => Math.max(0, t.leaf.q.length - t.leaf.credit);
+  // Hierarchical weighted split of `mps` in rate space. demandOf(t) is the
+  // MPS a lane would take this instant (Infinity if backlogged). Returns
+  // a Map lane → MPS.
+  rateSplit(cq, mps, demandOf) {
     for (const g of cq.groups) {
       g.d = 0;
       for (const tier of g.tiers) {
         tier.d = 0;
-        for (const t of tier.tenants) {
-          t.d = tickDemand(t) > t.leaf.inNow * dt + 1 ? Infinity : t.leaf.inNow;
-          tier.d += t.d;
-        }
+        for (const t of tier.tenants) { t.d = demandOf(t); tier.d += t.d; }
         g.d += tier.d;
       }
     }
-    waterfill(cq.groups, cq.mps);
-    cq.outNow = 0;
+    const out = new Map();
+    waterfill(cq.groups, mps);
     for (const g of cq.groups) {
       waterfill(g.tiers, g.extra);
       for (const tier of g.tiers) {
         waterfill(tier.tenants, tier.extra);
-        for (const t of tier.tenants) { t.leaf.outNow = t.extra; cq.outNow += t.extra; }
+        for (const t of tier.tenants) out.set(t, t.extra);
       }
     }
+    return out;
+  }
 
-    // 2b. Egress: the same weights applied to what is actually waiting, top
+  serve(cq, dt) {
+    const budget = cq.mps * dt;
+    const tickDemand = t => Math.max(0, t.leaf.q.length - t.leaf.credit);
+    const lanes = cq.groups.flatMap(g => g.tiers.flatMap(tier => tier.tenants));
+
+    // 1. Live egress readout (MPS). A backlogged lane can take any amount; a
+    //    lane that is keeping up only needs its current ingress. Recomputed
+    //    every tick, so when a level stops sending its share moves at once.
+    const nowDemand = t => (tickDemand(t) > t.leaf.inNow * dt + 1 ? Infinity : t.leaf.inNow);
+    const now = this.rateSplit(cq, cq.mps, nowDemand);
+    cq.outNow = 0;
+    for (const t of lanes) { t.leaf.outNow = now.get(t); cq.outNow += t.leaf.outNow; }
+
+    // 2. Alloc: the most each sending lane could achieve right now, i.e. its
+    //    split if it alone had unlimited demand and everyone else kept
+    //    sending as they are.
+    for (const t of lanes) {
+      const sending = t.leaf.sending || t.leaf.q.length > 0;
+      if (!sending) { t.leaf.allocMps = 0; continue; }
+      if (nowDemand(t) === Infinity) { t.leaf.allocMps = t.leaf.outNow; continue; }
+      t.leaf.allocMps = this.rateSplit(cq, cq.mps, x => (x === t ? Infinity : nowDemand(x))).get(t);
+    }
+
+    // 3. Egress: the same weights applied to what is actually waiting, top
     //    down. A node that can't use its full share passes the rest to its
     //    siblings first (same tier, then same SL), then up the hierarchy.
-    for (const g of cq.groups) {
-      g.d = 0;
-      for (const tier of g.tiers) {
-        tier.d = 0;
-        for (const t of tier.tenants) { t.d = tickDemand(t); tier.d += t.d; }
-        g.d += tier.d;
-      }
-    }
-    waterfill(cq.groups, budget);
-    for (const g of cq.groups) {
-      waterfill(g.tiers, g.extra);
-      for (const tier of g.tiers) {
-        waterfill(tier.tenants, tier.extra);
-        for (const t of tier.tenants) t.served = this.drain(t.leaf, t.extra, cq);
-      }
-    }
+    const grant = this.rateSplit(cq, budget, tickDemand);
+    for (const t of lanes) t.served = this.drain(t.leaf, grant.get(t), cq);
 
     let cqServed = 0;
     for (const g of cq.groups) {

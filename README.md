@@ -4,7 +4,7 @@ An interactive, in-browser simulator for Twilio's Traffic Optimization Engine. I
 
 **Live demo:** https://toe-simulator-8125-dev.twil.io/index.html
 
-> This is an educational model, not Twilio's production code. It follows the behavior described in Twilio's public docs and the allocation rules described below. Carrier names and default MPS values are placeholders.
+> This is an educational model, not Twilio's production code. It follows the behavior described in Twilio's public docs and the weighting rules described below. Carrier names and default MPS values are placeholders.
 
 ## Contents
 
@@ -13,7 +13,7 @@ An interactive, in-browser simulator for Twilio's Traffic Optimization Engine. I
   - [Sender types and egress](#sender-types-and-egress)
   - [Traffic Shaping](#traffic-shaping)
   - [Multi-Tenancy](#multi-tenancy)
-  - [Allocation vs. egress (lending)](#allocation-vs-egress-lending)
+  - [Maximum throughput vs. egress](#maximum-throughput-vs-egress)
   - [Worked examples](#worked-examples)
 - [Using the simulator](#using-the-simulator)
 - [Presets](#presets)
@@ -68,9 +68,9 @@ The default `MessageIntent` → Service Level mapping follows Twilio's docs and 
 | SL 2 | `customercare`, `delivery`, `education`, `events` |
 | SL 3 | `polling`, `announcements`, `marketing`, and messages with no intent |
 
-**The weighting rule:** a level's allocation is its weight divided by the total weight of the levels that are **currently sending**. A level counts as sending if it has an active stream or messages waiting.
+**The weighting rule:** when several levels have messages waiting, each drains at its weight divided by the total weight of those levels. Levels that aren't sending take nothing.
 
-With 100 MPS and weights 50/30/20:
+With 100 MPS, weights 50/30/20, and every sending level backlogged:
 
 | Levels sending | SL 1 | SL 2 | SL 3 |
 |---|---|---|---|
@@ -80,36 +80,35 @@ With 100 MPS and weights 50/30/20:
 | SL 3 only | – | – | 100 |
 | SL 1 + SL 3 | 50/70 = **71.4** | – | 20/70 = **28.6** |
 
-The allocation depends on *whether* a level is sending, **not on how much**. One OTP per second on SL 1 still reserves 71.4 MPS while SL 3 is sending.
+These figures are **maximums, not guarantees**. Nothing is reserved: if SL 1 sends fewer messages than its share could drain, SL 3 gets the rest (see [Maximum throughput vs. egress](#maximum-throughput-vs-egress)).
 
 ### Multi-Tenancy
 
-Multi-Tenancy divides **each Service Level's allocation** between subaccounts. If Traffic Shaping is None, it divides the whole sender type instead.
+Multi-Tenancy divides **each Service Level's throughput** between subaccounts. If Traffic Shaping is None, it divides the whole sender type instead.
 
 | Mode | Behavior |
 |---|---|
 | **None** (default) | All subaccounts share one first-in, first-out queue per Service Level. A high-volume subaccount can delay everyone else on that level. |
-| **Even** | Each subaccount gets its own queue. The subaccounts currently sending on a level split that level's allocation equally. |
-| **Weighted** | There are exactly **three tiers**, each with a weight (defaults **60 / 30 / 10**), and each subaccount is assigned to one tier. A level's allocation is split between the tiers currently sending, by tier weight. The subaccounts in a tier then split the tier's share evenly. |
+| **Even** | Each subaccount gets its own queue. The subaccounts currently sending on a level split that level's throughput equally. |
+| **Weighted** | There are exactly **three tiers**, each with a weight (defaults **60 / 30 / 10**), and each subaccount is assigned to one tier. A level's throughput is split between the tiers currently sending, by tier weight. The subaccounts in a tier then split the tier's share evenly. |
 
-The same rule applies here as for Service Levels: only tiers or subaccounts that are **sending** count, and send rate doesn't affect the split.
+The same rule applies here as for Service Levels: only tiers or subaccounts with messages to send take part in the split, and any throughput they don't use goes to the others.
 
 Each subaccount also chooses which **sender types** it uses (one or more). A sender type's queues only include the subaccounts that use it.
 
-### Allocation vs. egress (lending)
+### Maximum throughput vs. egress
 
-The simulator tracks two separate figures for every queue:
+Throughput is never guaranteed. For every queue the simulator shows:
 
-- **Allocation** is the MPS a queue is *guaranteed* while it's sending, from the weighting rules above. It ignores send rate.
-- **Egress** is the MPS actually leaving the queue.
+- **alloc**: the **most MPS the queue could reach at this moment**. That is the rate it would get if it had unlimited messages waiting, given what every other queue is actually sending right now. It changes as other queues start, stop or speed up.
+- **out**: the MPS actually leaving the queue. It is never more than alloc.
 
-**Unused share is lent out.** If a queue has a smaller backlog than its allocation can drain (for example, it's sending 50 msg/s but is allocated 71.4), the spare capacity is lent to queues that still have messages waiting. Lending follows the same hierarchy: siblings come first (other subaccounts in the same tier, then other tiers on the same Service Level), then the other Service Levels by weight. As a result:
+**Unused throughput moves to busy queues.** If a queue sends less than its weighted share (for example, 50 msg/s when its share would be 71.4), the difference goes to queues that still have messages waiting. It follows the same hierarchy: siblings come first (other subaccounts in the same tier, then other tiers on the same Service Level), then the other Service Levels by weight. As a result:
 
-- a queue's egress can be **higher** than its allocation while it borrows;
 - a sender type's total egress stays at its full MPS whenever any message is waiting;
-- when a queue empties, its share moves to the others **on the next 20 ms step**.
+- when a queue empties, the others can use its share **on the next 20 ms step**.
 
-A queue keeps its allocation until its backlog is gone, not just until its stream stops. For example, an SL 1 burst that leaves 457 messages queued keeps 71.4 MPS until the last one is sent. Then SL 3 jumps to 100.
+A queue with a backlog keeps drawing its share until the backlog is gone, not just until its stream stops. For example, an SL 1 burst that leaves 457 messages queued drains at 71.4 MPS until the last one is sent. Then SL 3 rises to 100.
 
 ### Worked examples
 
@@ -118,13 +117,14 @@ All of these use 100 MPS and Traffic Shaping at 50/30/20. "Backlogged" means the
 | Scenario | in (msg/s) | out (MPS) | alloc (MPS) |
 |---|---|---|---|
 | SL 1 and SL 3 both backlogged | 300 / 300 | 71.4 / 28.6 | 71.4 / 28.6 |
-| SL 1 sends 50, SL 3 backlogged | 50 / 300 | 50 / 50 | 71.4 / 28.6 |
-| SL 1 sends 1, SL 3 backlogged | 1 / 300 | 1 / 99 | 71.4 / 28.6 |
-| Even MT: A (SL 1) sends 10, B (SL 1) backlogged, C (SL 3) backlogged | 10 / 300 / 300 | 10 / 61.4 / 28.6 | 35.7 / 35.7 / 28.6 |
+| SL 1 sends 50, SL 3 backlogged | 50 / 300 | 50 / 50 | 71.4 / 50 |
+| SL 1 sends 1, SL 3 backlogged | 1 / 300 | 1 / 99 | 71.4 / 99 |
+| SL 1 and SL 3 each send 20 | 20 / 20 | 20 / 20 | 80 / 80 |
+| Even MT: A (SL 1) sends 10, B (SL 1) backlogged, C (SL 3) backlogged | 10 / 300 / 300 | 10 / 61.4 / 28.6 | 35.7 / 61.4 / 28.6 |
 | Weighted MT 60/30/10: Tier 1 and Tier 2 on SL 1, Tier 3 on SL 3, all backlogged | 300 each | 47.6 / 23.8 / 28.6 | 47.6 / 23.8 / 28.6 |
-| Same, but Tier 1 only sends 5 | 5 / 300 / 300 | 5 / 66.4 / 28.6 | 47.6 / 23.8 / 28.6 |
+| Same, but Tier 1 only sends 5 | 5 / 300 / 300 | 5 / 66.4 / 28.6 | 47.6 / 66.4 / 28.6 |
 
-In the last two Multi-Tenancy rows, the spare capacity stays on SL 1, going to B or Tier 2, while SL 3 keeps its 28.6.
+How to read alloc: a backlogged queue is already sending as fast as it can, so its alloc equals its out. A light queue's alloc is what it *could* reach if it sent more. For SL 1 sending 50, that is 71.4, because SL 3 would drop back to 28.6. In the Multi-Tenancy rows, the spare capacity stays on SL 1, going to B or Tier 2, while SL 3 stays at 28.6.
 
 ## Using the simulator
 
@@ -153,11 +153,11 @@ The settings lock while a simulation runs. **Reset** unlocks them.
 - Each lane shows live **`in · out · alloc`**:
   - **in**: messages arriving per second (the total rate of its active streams);
   - **out**: MPS leaving the queue right now;
-  - **alloc**: MPS guaranteed to the queue right now.
+  - **alloc**: the most MPS the queue could reach right now (never a guarantee).
 - Messages that leave a queue fly to one of the **carrier boxes** on the right, which show each carrier's live MPS.
-- **Hovering** a lane shows its backlog, oldest wait, ingress, egress, allocation, how much it's borrowing, and its allocation if every lane were sending. Hovering the egress meter or a carrier box shows totals.
+- **Hovering** a lane shows its backlog, oldest wait, ingress, egress, and the maximum it could achieve now. Hovering the egress meter or a carrier box shows totals.
 
-All live readouts are recomputed every step, so you see a change in allocation as soon as it happens, without any averaging delay.
+All live readouts are recomputed every step, so you see a change in throughput as soon as it happens, without any averaging delay.
 
 ### Results
 
@@ -189,7 +189,7 @@ Saved presets are kept in the browser's **localStorage** under the key `toe-sim-
 assets/
   index.html   page structure
   styles.css   layout and theme (light and dark)
-  sim.js       simulation model, with no DOM access: queues, allocation, lending, stats
+  sim.js       simulation model, with no DOM access: queues, weighted split, stats
   app.js       UI: controls, presets, canvas animation, chart, tooltips
 package.json            project metadata and deploy script
 .twilioserverlessrc     Twilio Serverless service config
@@ -200,10 +200,12 @@ The app is plain HTML, CSS and JavaScript, with no dependencies or bundler.
 ### Model internals (`sim.js`)
 
 - `Simulation.step(dt)` emits messages from active streams, then calls `serve()` for each sender type.
-- `serve()` runs two passes each step:
-  1. **Allocation**: `weightedShare()` splits the MPS by weight among *sending* nodes (Service Level, then tier, then subaccount). The result is shown as `alloc`.
-  2. **Egress**: `waterfill()` (a weighted max-min fair split) applies the same weights to what each queue actually has waiting, from the top of the hierarchy down. This is what lends unused share to siblings first and then up the hierarchy.
-- Fractional capacity carries over between steps as per-queue credit, so a queue allocated 71.4 MPS sends exactly that over time.
+- `rateSplit()` applies the hierarchy (Service Level, then tier, then subaccount) using `waterfill()`, a weighted max-min fair split. Capacity a queue can't use is re-split among the others, siblings first and then up the hierarchy.
+- `serve()` uses `rateSplit()` three ways each step:
+  1. **out**: with each queue's current demand (unlimited if backlogged, otherwise its ingress).
+  2. **alloc**: for each sending queue, the same split again with *that* queue's demand set to unlimited, which gives the most it could reach now.
+  3. **Egress**: with the messages actually waiting, to deliver this step's messages.
+- Fractional capacity carries over between steps as per-queue credit, so a queue drawing 71.4 MPS sends exactly that over time.
 
 ## Deploying to Twilio Serverless
 

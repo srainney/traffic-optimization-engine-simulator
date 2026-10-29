@@ -169,7 +169,7 @@ function renderTrafficShaping() {
   setSeg($('#ts-mode'), state.ts.mode);
   const on = state.ts.mode === 'weighted';
   $('#ts-hint').innerHTML = on
-    ? 'Each message gets a Service Level from its <code>MessageIntent</code>. Each sender type\'s queue is split into one queue per level, and each level is guaranteed its weight divided by the total weight of the levels currently sending, however few messages it sends. Any part of a share a level isn\'t using is lent to levels with messages waiting.'
+    ? 'Each message gets a Service Level from its <code>MessageIntent</code>. Each sender type\'s queue is split into one queue per level, and when several levels have messages waiting, each drains at its weight divided by the total weight of those levels. Throughput a level isn\'t using goes to the levels that still have messages waiting.'
     : 'All messages share one first-in, first-out queue per sender type, whatever their <code>MessageIntent</code>. Messages are still colored by the Service Level they <i>would</i> get.';
 
   const box = $('#ts-weights');
@@ -313,7 +313,7 @@ function renderLegend() {
     el('span', { class: 'swatch', style: `background: var(--series-${sl})` }),
     `${SL_SHAPES[sl]} SL ${sl}: ${INTENTS.filter(i => !i.fixed && state.ts.mapping[i.id] === sl).map(i => i.id).join(', ') || '–'}${sl === 3 ? ', (none)' : ''}`));
   $('#legend').replaceChildren(...items, el('span', { class: 'sep' }),
-    el('span', { class: 'item' }, 'Lane = queue · head of queue on the right · dot = message, colored by priority · in = messages arriving per second, out = MPS leaving the queue, alloc = MPS guaranteed to the queue'));
+    el('span', { class: 'item' }, 'Lane = queue · head of queue on the right · dot = message, colored by priority · in = messages arriving per second, out = MPS leaving the queue, alloc = the most MPS the queue could reach right now'));
 }
 
 $('#preset').addEventListener('change', e => { applyPreset(e.target.value); renderAll(); });
@@ -528,11 +528,6 @@ function laneLabel(cq, lane) {
   return parts.join(' · ');
 }
 
-// Guaranteed (minimum) MPS for a lane if every queue on the sender type were busy.
-function guaranteedMps(cq, lane) {
-  const share = (node, siblings) => Math.max(node.w, 1e-6) / siblings.reduce((s, n) => s + Math.max(n.w, 1e-6), 0);
-  return cq.mps * share(lane.group, cq.groups) * share(lane.tier, lane.group.tiers) / lane.tier.tenants.length;
-}
 
 function draw(dtReal) {
   const W = layout.width;
@@ -686,9 +681,7 @@ canvas.addEventListener('mousemove', e => {
       ['Oldest wait', `${fmt(oldest, 2)} s`],
       ['Ingress', `${fmt(hit.lane.leaf.inNow, 1)} msg/s`],
       ['Egress', `${fmt(hit.lane.leaf.outNow, 1)} MPS`],
-      ['Allocated (guaranteed)', `${fmt(hit.lane.leaf.allocMps, 1)} MPS`],
-      ['Borrowed', `${fmt(Math.max(0, hit.lane.leaf.outNow - hit.lane.leaf.allocMps), 1)} MPS`],
-      ['If every lane sends', `${fmt(guaranteedMps(hit.cq, hit.lane), 1)} MPS`],
+      ['Max achievable now', `${fmt(hit.lane.leaf.allocMps, 1)} MPS`],
     ]);
   } else if (hit.kind === 'egress') {
     const queued = hit.row.lanes.reduce((s, l) => s + l.leaf.q.length, 0);
