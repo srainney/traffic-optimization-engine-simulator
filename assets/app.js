@@ -998,39 +998,56 @@ depthBox.addEventListener('mouseleave', hideDepthHover);
 
 function renderLatency() {
   const box = $('#latency-table');
-  if (!sim) { box.innerHTML = '<p class="hint">Results appear here while the simulation runs.</p>'; return; }
+  const subBox = $('#sub-latency-table');
+  if (!sim) {
+    box.innerHTML = '<p class="hint">Results appear here while the simulation runs.</p>';
+    subBox.innerHTML = '<p class="hint">Per-subaccount results appear here while the simulation runs.</p>';
+    return;
+  }
   const sum = sim.summary();
   const weighted = sim.cfg.mt.mode === 'weighted';
   const tsOn = sim.cfg.ts.enabled;
   const allMax = Math.max(1e-6, ...sum.bySL.map(r => r.p95), ...sum.byTier.map(r => r.p95), ...sum.bySub.map(r => r.p95));
   const bar = v => `<span class="bar-cell">${fmt(v, 2)} s<i style="width:${Math.round((v / allMax) * 60)}px"></i></span>`;
-  const row = (label, r, cls = '') => `<tr class="${cls}"><td>${label}</td><td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td></tr>`;
+  const cells = r => `<td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td>`;
+  const row = (label, r) => `<tr><td>${label}</td>${cells(r)}</tr>`;
   const slLabel = sl => `<span class="swatch" style="background:var(--series-${sl})"></span> ${SL_SHAPES[sl]} SL ${sl}`;
   const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
 
+  // Summary table: by Service Level, then by tier.
   let h = '<table><thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
   h += '<tr class="group"><td colspan="6">By Service Level</td></tr>';
   sum.bySL.forEach((r, i) => { h += row(slLabel(i + 1), r); });
-
   if (weighted) {
     h += '<tr class="group"><td colspan="6">By Multi-Tenancy tier</td></tr>';
-    sum.byTier.forEach((r, i) => {
-      h += row(`Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`, r);
-    });
-  }
-
-  h += `<tr class="group"><td colspan="6">By subaccount${weighted ? ', tier' : ''}${tsOn ? ' and Service Level' : ''}</td></tr>`;
-  const order = sim.cfg.subaccounts.map((_, i) => i)
-    .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
-  for (const i of order) {
-    const sa = sim.cfg.subaccounts[i];
-    const tier = weighted ? ` <span class="muted">· Tier ${sa.tier + 1}</span>` : '';
-    h += row(`<b>${String.fromCharCode(65 + i)} · ${escapeHtml(sa.name)}</b>${tier}`, sum.bySub[i], 'sub-total');
-    if (tsOn) {
-      sum.bySubSL[i].forEach((r, j) => { if (r.count) h += row(`<span class="indent">${slLabel(j + 1)}</span>`, r, 'sub-sl'); });
-    }
+    sum.byTier.forEach((r, i) => { h += row(`Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`, r); });
   }
   box.innerHTML = `${h}</tbody></table>`;
+
+  // Full-width table: one row per subaccount; each Service Level is a column group.
+  $('#sub-latency-title').textContent = `Time spent in queue by subaccount${weighted ? ', tier' : ''}${tsOn ? ' and Service Level' : ''}`;
+  const order = sim.cfg.subaccounts.map((_, i) => i)
+    .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
+  const groups = [['All messages', null], ...(tsOn ? [1, 2, 3].map(sl => [slLabel(sl), sl]) : [])];
+  const short = r => r.count
+    ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${bar(r.p95)}</td>`
+    : '<td class="g-start empty">–</td><td class="empty">–</td><td class="empty">–</td>';
+  let t = `<table class="sub-latency${weighted ? ' has-tier' : ''}"><thead><tr><th rowspan="2">Subaccount</th>`;
+  if (weighted) t += '<th rowspan="2">Tier</th>';
+  t += groups.map(([label]) => `<th colspan="3" class="g-start g-head">${label}</th>`).join('') + '</tr><tr>';
+  t += groups.map(() => '<th class="g-start">Delivered</th><th>Avg</th><th>p95</th>').join('') + '</tr></thead><tbody>';
+  let lastTier = null;
+  for (const i of order) {
+    const sa = sim.cfg.subaccounts[i];
+    const tierBreak = weighted && lastTier !== null && sa.tier !== lastTier ? ' class="tier-break"' : '';
+    lastTier = sa.tier;
+    t += `<tr${tierBreak}><td><b>${String.fromCharCode(65 + i)}</b> · ${escapeHtml(sa.name)}</td>`;
+    if (weighted) t += `<td>Tier ${sa.tier + 1} <span class="muted">· ${fmt(pctOf(tierWeights, sa.tier), 0)}%</span></td>`;
+    t += short(sum.bySub[i]);
+    if (tsOn) sum.bySubSL[i].forEach(r => { t += short(r); });
+    t += '</tr>';
+  }
+  subBox.innerHTML = `${t}</tbody></table>`;
 }
 
 function escapeHtml(s) {

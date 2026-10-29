@@ -181,10 +181,10 @@ All live readouts are recomputed every step, so you see a change in throughput a
 
 - **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
 - **Messages waiting in queue, by Service Level** is a line chart of backlog over time. Hover it for exact values.
-- **Time spent in queue** is a table of delivered count, average, p50, p95 and max wait, including time waiting at a carrier. It has three sections:
+- **Time spent in queue** (next to the chart) shows delivered count, average, p50, p95 and max wait, including time waiting at a carrier:
   - **By Service Level:** SL 1, 2 and 3.
   - **By Multi-Tenancy tier:** Tier 1, 2 and 3 with their weights. Shown when Multi-Tenancy is Weighted.
-  - **By subaccount, tier and Service Level:** one row per subaccount (with its tier when Weighted), and under it a row for each Service Level it sent on (when Traffic Shaping is Weighted). Subaccounts are listed by tier.
+- **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount. It shows the subaccount's tier when Multi-Tenancy is Weighted, then delivered count, average and p95 for all its messages and, when Traffic Shaping is Weighted, for each Service Level (– where it sent nothing). Subaccounts are listed by tier.
 
 ## Presets
 
