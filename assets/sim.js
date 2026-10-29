@@ -146,6 +146,8 @@ class Simulation {
     this.queuedBySL = [0, 0, 0, 0];
     this.latBySL = [[], [], [], []];
     this.latBySub = cfg.subaccounts.map(() => []);
+    this.latByTier = [[], [], []];
+    this.latBySubSL = cfg.subaccounts.map(() => [[], [], [], []]);
     this.sentBySub = cfg.subaccounts.map(() => 0);
     this.timeline = [];
     this.nextSample = 0;
@@ -341,6 +343,9 @@ class Simulation {
     this.inCarrier--;
     this.latBySL[m.sl].push(wait);
     this.latBySub[m.sub].push(wait);
+    this.latBySubSL[m.sub][m.sl].push(wait);
+    const tier = this.cfg.subaccounts[m.sub].tier;
+    if (this.cfg.mt.mode === 'weighted' && this.latByTier[tier]) this.latByTier[tier].push(wait);
     cq.delivered++;
     c.delivered++;
     c.tick++;
@@ -375,7 +380,9 @@ class Simulation {
   summary() {
     return {
       bySL: [1, 2, 3].map(sl => summarize(this.latBySL[sl])),
+      byTier: this.latByTier.map(summarize),
       bySub: this.latBySub.map(summarize),
+      bySubSL: this.latBySubSL.map(levels => [1, 2, 3].map(sl => summarize(levels[sl]))),
     };
   }
 }

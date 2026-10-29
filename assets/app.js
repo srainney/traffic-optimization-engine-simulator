@@ -95,9 +95,9 @@ const PRESETS = {
     label: '9 queues: 3 tiers × 3 Service Levels (steady)',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
-      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
-      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
-      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
       { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 20 },
@@ -115,9 +115,9 @@ const PRESETS = {
     label: '9 queues: tiers and levels starting and stopping in waves',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
-      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
-      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
-      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
       // 0–30 s: SL 3 marketing from every tier (the baseline load)
@@ -138,11 +138,11 @@ const PRESETS = {
     label: 'Shared tiers: 5 subaccounts, 2 per tier, all Service Levels',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
-      { name: 'Bank East (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
-      { name: 'Bank West (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
-      { name: 'Retail US (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
-      { name: 'Retail EU (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
-      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+      { name: 'Bank East', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Bank West', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retail US', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Retail EU', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
       { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 16, start: 0, duration: 20 },
@@ -167,9 +167,9 @@ const PRESETS = {
     ts: 'weighted', mt: 'weighted',
     carriers: { shortcode: [{}, { status: 'outage', from: 6, to: 14 }, {}] },
     subaccounts: [
-      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
-      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
-      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
       { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 20 },
@@ -1000,16 +1000,36 @@ function renderLatency() {
   const box = $('#latency-table');
   if (!sim) { box.innerHTML = '<p class="hint">Results appear here while the simulation runs.</p>'; return; }
   const sum = sim.summary();
-  const allMax = Math.max(1e-6, ...sum.bySL.map(r => r.p95), ...sum.bySub.map(r => r.p95));
+  const weighted = sim.cfg.mt.mode === 'weighted';
+  const tsOn = sim.cfg.ts.enabled;
+  const allMax = Math.max(1e-6, ...sum.bySL.map(r => r.p95), ...sum.byTier.map(r => r.p95), ...sum.bySub.map(r => r.p95));
   const bar = v => `<span class="bar-cell">${fmt(v, 2)} s<i style="width:${Math.round((v / allMax) * 60)}px"></i></span>`;
-  const row = (label, r) => `<tr><td>${label}</td><td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td></tr>`;
+  const row = (label, r, cls = '') => `<tr class="${cls}"><td>${label}</td><td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td></tr>`;
+  const slLabel = sl => `<span class="swatch" style="background:var(--series-${sl})"></span> ${SL_SHAPES[sl]} SL ${sl}`;
+  const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
+
   let h = '<table><thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
-  h += '<tr class="group"><td colspan="6">By message priority</td></tr>';
-  sum.bySL.forEach((r, i) => {
-    h += row(`<span class="swatch" style="background:var(--series-${i + 1})"></span> ${SL_SHAPES[i + 1]} SL ${i + 1}`, r);
-  });
-  h += '<tr class="group"><td colspan="6">By subaccount</td></tr>';
-  sum.bySub.forEach((r, i) => { h += row(`${String.fromCharCode(65 + i)} · ${escapeHtml(sim.cfg.subaccounts[i].name)}`, r); });
+  h += '<tr class="group"><td colspan="6">By Service Level</td></tr>';
+  sum.bySL.forEach((r, i) => { h += row(slLabel(i + 1), r); });
+
+  if (weighted) {
+    h += '<tr class="group"><td colspan="6">By Multi-Tenancy tier</td></tr>';
+    sum.byTier.forEach((r, i) => {
+      h += row(`Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`, r);
+    });
+  }
+
+  h += `<tr class="group"><td colspan="6">By subaccount${weighted ? ', tier' : ''}${tsOn ? ' and Service Level' : ''}</td></tr>`;
+  const order = sim.cfg.subaccounts.map((_, i) => i)
+    .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
+  for (const i of order) {
+    const sa = sim.cfg.subaccounts[i];
+    const tier = weighted ? ` <span class="muted">· Tier ${sa.tier + 1}</span>` : '';
+    h += row(`<b>${String.fromCharCode(65 + i)} · ${escapeHtml(sa.name)}</b>${tier}`, sum.bySub[i], 'sub-total');
+    if (tsOn) {
+      sum.bySubSL[i].forEach((r, j) => { if (r.count) h += row(`<span class="indent">${slLabel(j + 1)}</span>`, r, 'sub-sl'); });
+    }
+  }
   box.innerHTML = `${h}</tbody></table>`;
 }
 
