@@ -174,13 +174,17 @@ All live readouts are recomputed every step, so you see a change in throughput a
 
 ## Presets
 
-**Built-in presets** load a set of subaccounts and streams, and reset Traffic Shaping, Multi-Tenancy and MPS to their defaults:
+**Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). The first three start with both features set to None, so you can turn them on yourself. The last four turn them on for you.
 
-| Preset | What it shows |
-|---|---|
-| Marketing blast + OTP burst | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code. |
-| Noisy neighbor subaccount | One Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
-| Mixed sender types | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |
+| Preset | Modes | What it shows |
+|---|---|---|
+| Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code. |
+| Noisy neighbor subaccount | None / None | One Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
+| Mixed sender types | None / None | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |
+| 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
+| 9 queues: tiers and levels starting and stopping in waves | Weighted / Weighted | SL 3 from every tier, then SL 2 joins (staggered by tier), then short SL 1 bursts, then everything winds down. It shows each level's share moving between tiers and levels as they start, stop and drain. |
+| Shared tiers: 5 subaccounts, 2 per tier, all Service Levels | Weighted / Weighted | Two subaccounts each in Tiers 1 and 2 and one in Tier 3, on all three levels (15 queues). Tier-mates split their tier's share on each level, e.g. SL 1: 15 + 15 / 7.5 + 7.5 / 5. |
+| Even Multi-Tenancy: 3 subaccounts × 3 Service Levels | Weighted / Even | Two subaccounts on SL 1, three on SL 2, two on SL 3 (a third joins SL 3 partway through): SL 1 = 25 / 25, SL 2 = 10 / 10 / 10, SL 3 = 10 / 10, then 6.7 each. |
 
 **Saved presets** store a complete snapshot: Traffic Shaping (mode, weights, mapping), Multi-Tenancy (mode, tier weights), subaccounts, MPS per sender type, and all streams.
 

@@ -76,6 +76,96 @@ const PRESETS = {
       { sub: 1, senderType: 'longcode', intent: 'delivery', rate: 30, start: 0, duration: 10 },
     ],
   },
+  grid9: {
+    label: '9 queues: 3 tiers × 3 Service Levels (steady)',
+    ts: 'weighted', mt: 'weighted',
+    subaccounts: [
+      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+    ],
+    streams: [
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 20, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 20, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 12, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 10, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 10, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'events', rate: 8, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 5, start: 0, duration: 20 },
+    ],
+  },
+  grid9waves: {
+    label: '9 queues: tiers and levels starting and stopping in waves',
+    ts: 'weighted', mt: 'weighted',
+    subaccounts: [
+      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+    ],
+    streams: [
+      // 0–30 s: SL 3 marketing from every tier (the baseline load)
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 45, start: 0, duration: 30 },
+      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 25, start: 0, duration: 30 },
+      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 12, start: 0, duration: 30 },
+      // 5–20 s: SL 2 joins, staggered by tier
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 40, start: 5, duration: 15 },
+      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 25, start: 7, duration: 11 },
+      { sub: 2, senderType: 'shortcode', intent: 'events', rate: 10, start: 9, duration: 7 },
+      // 12–16 s: short SL 1 bursts from every tier
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 60, start: 12, duration: 4 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 35, start: 12.5, duration: 3 },
+      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 15, start: 13, duration: 2 },
+    ],
+  },
+  sharedTiers: {
+    label: 'Shared tiers: 5 subaccounts, 2 per tier, all Service Levels',
+    ts: 'weighted', mt: 'weighted',
+    subaccounts: [
+      { name: 'Bank East (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Bank West (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retail US (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Retail EU (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+    ],
+    streams: [
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 16, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'fraud', rate: 16, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
+      { sub: 3, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
+      { sub: 4, senderType: 'shortcode', intent: 'security', rate: 8, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 12, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 12, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'customercare', rate: 8, start: 0, duration: 20 },
+      { sub: 3, senderType: 'shortcode', intent: 'customercare', rate: 8, start: 0, duration: 20 },
+      { sub: 4, senderType: 'shortcode', intent: 'events', rate: 6, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 10, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'marketing', rate: 10, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'announcements', rate: 8, start: 0, duration: 20 },
+      { sub: 3, senderType: 'shortcode', intent: 'announcements', rate: 8, start: 0, duration: 20 },
+      { sub: 4, senderType: 'shortcode', intent: 'polling', rate: 4, start: 0, duration: 20 },
+    ],
+  },
+  evenGrid: {
+    label: 'Even Multi-Tenancy: 3 subaccounts × 3 Service Levels',
+    ts: 'weighted', mt: 'even',
+    subaccounts: [
+      { name: 'Subaccount 1', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Subaccount 2', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Subaccount 3', tier: 0, senderTypes: ['shortcode'] },
+    ],
+    streams: [
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 8, start: 6, duration: 8 },
+    ],
+  },
 };
 
 const state = {
@@ -118,8 +208,8 @@ function applyPreset(key) {
     state.streams = c.streams.filter(st => state.senderTypes[st.senderType]);
   } else {
     const p = PRESETS[key];
-    state.ts = { mode: 'none', weights: [50, 30, 20], mapping: defaultMapping() };
-    state.mt = { mode: 'none', tiers: [{ weight: 60 }, { weight: 30 }, { weight: 10 }] };
+    state.ts = { mode: p.ts || 'none', weights: [50, 30, 20], mapping: defaultMapping() };
+    state.mt = { mode: p.mt || 'none', tiers: [{ weight: 60 }, { weight: 30 }, { weight: 10 }] };
     state.senderTypes = defaultCarriers();
     state.subaccounts = p.subaccounts.map(s => ({ ...s, senderTypes: s.senderTypes.slice() }));
     state.streams = p.streams.map(s => ({ ...s }));
