@@ -188,3 +188,7 @@ table.sub-latency th.g-head { text-align: center; color: var(--text-secondary); 
 table.sub-latency .g-start { border-left: 1px solid var(--grid); padding-left: 12px; }
 table.sub-latency td.empty { color: var(--text-muted); }
 table.sub-latency tr.tier-break td { border-top: 1px solid var(--axis); }
+table.sub-latency { font-size: 11.5px; }
+table.sub-latency th, table.sub-latency td { padding: 4px 5px; font-size: inherit; }
+table.sub-latency .g-start { padding-left: 8px; }
+table.sub-latency .bar-cell { gap: 4px; }

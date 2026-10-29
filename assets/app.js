@@ -1029,8 +1029,9 @@ function renderLatency() {
   const order = sim.cfg.subaccounts.map((_, i) => i)
     .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
   const groups = [['All messages', null], ...(tsOn ? [1, 2, 3].map(sl => [slLabel(sl), sl]) : [])];
+  const subBar = v => `<span class="bar-cell">${fmt(v, 2)} s<i style="width:${Math.round((v / allMax) * 28)}px"></i></span>`;
   const short = r => r.count
-    ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${bar(r.p95)}</td>`
+    ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${subBar(r.p95)}</td>`
     : '<td class="g-start empty">–</td><td class="empty">–</td><td class="empty">–</td>';
   let t = `<table class="sub-latency${weighted ? ' has-tier' : ''}"><thead><tr><th rowspan="2">Subaccount</th>`;
   if (weighted) t += '<th rowspan="2">Tier</th>';
