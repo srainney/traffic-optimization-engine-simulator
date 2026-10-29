@@ -605,27 +605,15 @@ function draw(dtReal) {
       layout.hits.push({ x: 6, y: ly - LANE_H / 2, w: x1 + 180, h: LANE_H, kind: 'lane', cq, lane });
     });
 
-    // carrier queues: each bar is that carrier's slice of the shared egress
+    // carrier queues: destinations for this sender type's egress
     layout.carrierBox.get(cq).forEach((g, ci) => {
-      const c = cq.carriers[ci];
-      const live = cq.outNow / cq.carriers.length;
       ctx.fillStyle = colors.surface;
       ctx.strokeStyle = colors.axis;
       ctx.beginPath(); ctx.roundRect(g.x, g.y, g.w, g.h, 6); ctx.fill(); ctx.stroke();
       ctx.fillStyle = colors.text;
       ctx.font = '600 12px system-ui, sans-serif';
-      ctx.fillText(carrierName(ci), g.x + 10, g.y + 12);
+      ctx.fillText(carrierName(ci), g.x + 10, g.y + g.h / 2);
       ctx.font = '11px system-ui, sans-serif';
-      ctx.fillStyle = colors.text2;
-      ctx.textAlign = 'right';
-      ctx.fillText(`${fmt(live, 1)} MPS`, g.x + g.w - 10, g.y + 12);
-      ctx.textAlign = 'left';
-      const frac = cq.mps > 0 ? Math.min(1, live / cq.mps) : 0;
-      const bw = g.w - 20;
-      ctx.fillStyle = colors.grid;
-      ctx.beginPath(); ctx.roundRect(g.x + 10, g.y + g.h - 12, bw, 4, 2); ctx.fill();
-      ctx.fillStyle = colors.accent;
-      if (frac > 0.005) { ctx.beginPath(); ctx.roundRect(g.x + 10, g.y + g.h - 12, bw * frac, 4, 2); ctx.fill(); }
       layout.hits.push({ x: g.x, y: g.y, w: g.w, h: g.h, kind: 'carrier', cq, ci });
     });
   }
@@ -695,8 +683,6 @@ canvas.addEventListener('mousemove', e => {
   } else {
     const c = hit.cq.carriers[hit.ci];
     showTip(e, `${carrierName(hit.ci)} · ${stLabel}`, [
-      ['Receiving', `${fmt(hit.cq.outNow / hit.cq.carriers.length, 1)} MPS`],
-      ['Share of egress', `${fmt(100 / hit.cq.carriers.length, 0)}%`],
       ['Delivered', fmtInt(c.delivered)],
     ]);
   }

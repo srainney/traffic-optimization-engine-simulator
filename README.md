@@ -126,6 +126,20 @@ All of these use 100 MPS and Traffic Shaping at 50/30/20. "Backlogged" means the
 
 How to read alloc: a backlogged queue is already sending as fast as it can, so its alloc equals its out. A light queue's alloc is what it *could* reach if it sent more. For SL 1 sending 50, that is 71.4, because SL 3 would drop back to 28.6. In the Multi-Tenancy rows, the spare capacity stays on SL 1, going to B or Tier 2, while SL 3 stays at 28.6.
 
+### Cross-check with throughput-viz
+
+The weighting matches [ankurkwv/throughput-viz](https://github.com/ankurkwv/throughput-viz), in particular its combined Multi-Tenancy and Traffic Shaping scenario (`7-multi-with-traffic-shaping-script.js`). It works **levels first**: each Service Level with messages gets its weighted share of the total, and that share is then split between the tiers with messages on that level, and evenly between the subaccounts in each tier.
+
+We ported its `shape()` function and ran it against this simulator's model (100 MPS, every queue backlogged). The results matched exactly:
+
+| Scenario | throughput-viz | This simulator |
+|---|---|---|
+| A (Tier 1) SL 1, B (Tier 3) SL 2, C (Tier 2) SL 3; TS 50/30/20, MT 60/30/10 | 50 / 30 / 20 | 50 / 30 / 20 |
+| Its own config: SL 7/3, tiers 6/4, three subaccounts on both levels | 14 / 14 / 42 and 6 / 6 / 18 | same |
+| A, B, C in Tiers 1, 2, 3, all on SL 1 | 60 / 30 / 10 | 60 / 30 / 10 |
+
+Tier weights only change the split between subaccounts **on the same Service Level**. If each subaccount sends on a different level, the levels' weights decide the split by themselves.
+
 ## Using the simulator
 
 ### Controls (left panel)
