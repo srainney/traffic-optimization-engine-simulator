@@ -3,18 +3,17 @@
 // Each sender type has one MPS budget: the downstream egress shared by all
 // of its carriers. Capacity is split hierarchically, work-conserving:
 //
-//   sender-type MPS ─► Multi-Tenancy tiers (by tier weight; Even = one equal tier
-//                      per subaccount; None = one shared tier)
-//                   ─► Traffic Shaping service levels inside the tier (by SL weight)
-//                   ─► the tier's subaccounts on that level (even split; one shared FIFO if None)
+//   sender-type MPS ─► Traffic Shaping service levels (by SL weight; one group if off)
+//                   ─► Multi-Tenancy tiers inside each level (by tier weight; one tier if None/Even)
+//                   ─► the tier's subaccounts on that level (equal split; one shared FIFO if None)
 //                   ─► egress to the message's destination carrier queue
 //
 // At every level, a node's share is its weight over the summed weights of the
 // siblings that are currently *sending* (an active stream or messages waiting).
-// With tiers 60/30/10 all sending and Tier 1's subaccount sending SL1-3,
-// Tier 1 gets 60 of 100 MPS and its levels get 50/30/20% of that: 30/18/12.
-// With SL weights 50/30/20 and SL1 + SL3 both backlogged in one subaccount,
-// SL1 drains at 50/70 = 71.4% of its share and SL3 at 28.6%.
+// With SL weights 50/30/20 and SL1 + SL3 both backlogged, SL1 gets
+// 50/70 = 71.4% and SL3 20/70 = 28.6%; a lone sender gets 100%. Each level's
+// share is then split between its tiers: with tiers 60/30/10 all sending on
+// every level, SL1's 50 MPS gives Tier 1 30, Tier 2 15 and Tier 3 5.
 //
 // Nothing is reserved: capacity a node can't use (its queue ran dry) goes to
 // nodes that still have messages waiting, siblings first, then up the
@@ -198,41 +197,28 @@ class Simulation {
     if (this.onArrive) this.onArrive(m, cq, leaf);
   }
 
-  // Weighted split of `mps` across lanes, in rate space, Multi-Tenancy
-  // first: tiers by tier weight → Service Levels inside each tier by SL
-  // weight → the tier's subaccounts sending that level, evenly. demandOf(t)
-  // is the MPS a lane would take this instant (Infinity if backlogged).
-  // Unused capacity at any step is re-split among siblings that still want
-  // more. Returns a Map lane → MPS.
+  // Weighted split of `mps` across lanes, in rate space: Traffic Shaping
+  // first (Service Levels by SL weight), then Multi-Tenancy inside each
+  // level (tiers by tier weight; Even = one tier), then the tier's
+  // subaccounts on that level, equally. demandOf(t) is the MPS a lane would
+  // take this instant (Infinity if backlogged). Unused capacity at any step
+  // is re-split among siblings that still want more. Returns a Map lane → MPS.
   rateSplit(cq, mps, demandOf) {
-    // Regroup the SL → tier → subaccount tree as tier → SL → subaccount.
-    // Even Multi-Tenancy: every subaccount is its own equal-weight tier.
-    const even = this.cfg.mt.mode === 'even';
-    const tiers = new Map();
     for (const g of cq.groups) {
+      g.d = 0;
       for (const tier of g.tiers) {
-        for (const t of tier.tenants) {
-          const key = even ? `sub${t.sub}` : tier.idx;
-          if (!tiers.has(key)) tiers.set(key, { w: even ? 1 : tier.w, levels: new Map() });
-          const levels = tiers.get(key).levels;
-          if (!levels.has(g.sl)) levels.set(g.sl, { w: g.w, lanes: [] });
-          levels.get(g.sl).lanes.push({ w: 1, d: demandOf(t), lane: t });
-        }
+        tier.d = 0;
+        for (const t of tier.tenants) { t.d = demandOf(t); tier.d += t.d; }
+        g.d += tier.d;
       }
     }
-    const tierNodes = [...tiers.values()];
-    for (const tn of tierNodes) {
-      tn.levels = [...tn.levels.values()];
-      for (const lv of tn.levels) lv.d = lv.lanes.reduce((sum, l) => sum + l.d, 0);
-      tn.d = tn.levels.reduce((sum, l) => sum + l.d, 0);
-    }
     const out = new Map();
-    waterfill(tierNodes, mps);
-    for (const tn of tierNodes) {
-      waterfill(tn.levels, tn.extra);
-      for (const lv of tn.levels) {
-        waterfill(lv.lanes, lv.extra);
-        for (const l of lv.lanes) out.set(l.lane, l.extra);
+    waterfill(cq.groups, mps);
+    for (const g of cq.groups) {
+      waterfill(g.tiers, g.extra);
+      for (const tier of g.tiers) {
+        waterfill(tier.tenants, tier.extra);
+        for (const t of tier.tenants) out.set(t, t.extra);
       }
     }
     return out;
@@ -263,7 +249,7 @@ class Simulation {
 
     // 3. Egress: the same weights applied to what is actually waiting, top
     //    down. A node that can't use its full share passes the rest to its
-    //    siblings first (same level in the tier, then same tier), then up the hierarchy.
+    //    siblings first (same tier on the level, then same level), then up the hierarchy.
     const grant = this.rateSplit(cq, budget, tickDemand);
     for (const t of lanes) t.served = this.drain(t.leaf, grant.get(t), cq);
 
