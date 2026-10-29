@@ -185,6 +185,7 @@ All live readouts are recomputed every step, so you see a change in throughput a
   - **By Service Level:** SL 1, 2 and 3.
   - **By Multi-Tenancy tier:** Tier 1, 2 and 3 with their weights. Shown when Multi-Tenancy is Weighted.
 - **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount. It shows the subaccount's tier when Multi-Tenancy is Weighted, then delivered count, average and p95 for all its messages and, when Traffic Shaping is Weighted, for each Service Level (– where it sent nothing). Subaccounts are listed by tier.
+- Both tables have fixed column widths, so they don't shift as values grow during a run. The p95 bars sit on a fixed-width track. If the window is too narrow, the table scrolls sideways inside its card.
 
 ## Presets
 

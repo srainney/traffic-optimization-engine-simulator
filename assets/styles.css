@@ -140,8 +140,6 @@ th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--gri
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--text-muted); font-weight: 500; }
 tr.group td { color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--axis); padding-top: 10px; }
-.bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
-.bar-cell i { display: block; height: 6px; border-radius: 0 3px 3px 0; background: var(--axis); }
 
 .tooltip {
   position: fixed; z-index: 20; pointer-events: none; background: var(--surface-1, #fff); color: var(--text-primary, #000);
@@ -178,7 +176,6 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6
 .carrier-incident { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 td .muted { color: var(--text-muted); font-weight: 400; }
 #latency-table td, #latency-table th, #sub-latency-table td, #sub-latency-table th { white-space: nowrap; }
-#latency-table .bar-cell i, #sub-latency-table .bar-cell i { flex: none; }
 #sub-latency-table { overflow-x: auto; }
 table.sub-latency th { vertical-align: bottom; }
 table.sub-latency th:nth-child(1), table.sub-latency td:nth-child(1) { text-align: left; }
@@ -192,3 +189,28 @@ table.sub-latency { font-size: 11.5px; }
 table.sub-latency th, table.sub-latency td { padding: 4px 5px; font-size: inherit; }
 table.sub-latency .g-start { padding-left: 8px; }
 table.sub-latency .bar-cell { gap: 4px; }
+
+/* Fixed-width results tables: columns don't resize as values grow. Sized for up
+   to 99,999 messages and 999.99 s. */
+table.fixed { table-layout: fixed; }
+table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; }
+table.fixed col.c-count { width: 74px; }
+table.fixed col.c-time { width: 62px; }
+table.fixed col.c-p95 { width: 104px; }
+table.summary col.c-label { width: 104px; }
+table.sub-latency col.c-sub { width: 106px; }
+table.sub-latency col.c-tier { width: 78px; }
+table.sub-latency col.c-count { width: 54px; }
+table.sub-latency col.c-time { width: 58px; }
+table.sub-latency col.c-p95 { width: 92px; }
+table.sub-latency td:nth-child(1) { white-space: nowrap; }
+.bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.bar-cell .num { flex: none; min-width: 52px; text-align: right; }
+.bar-cell .track { flex: none; width: 34px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+.bar-cell .track i { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--axis); }
+table.sub-latency .bar-cell .track { width: 28px; }
+/* Fixed tables are at least as wide as their columns; narrow windows scroll inside the card. */
+#latency-table { overflow-x: auto; }
+table.summary { min-width: 468px; }
+table.sub-latency { min-width: 922px; }
+table.sub-latency.has-tier { min-width: 1000px; }

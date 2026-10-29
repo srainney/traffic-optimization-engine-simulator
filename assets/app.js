@@ -1008,14 +1008,16 @@ function renderLatency() {
   const weighted = sim.cfg.mt.mode === 'weighted';
   const tsOn = sim.cfg.ts.enabled;
   const allMax = Math.max(1e-6, ...sum.bySL.map(r => r.p95), ...sum.byTier.map(r => r.p95), ...sum.bySub.map(r => r.p95));
-  const bar = v => `<span class="bar-cell">${fmt(v, 2)} s<i style="width:${Math.round((v / allMax) * 60)}px"></i></span>`;
+  const frac = v => Math.min(100, Math.round((v / allMax) * 100));
+  const bar = v => `<span class="bar-cell"><span class="num">${fmt(v, 2)} s</span><span class="track"><i style="width:${frac(v)}%"></i></span></span>`;
   const cells = r => `<td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td>`;
   const row = (label, r) => `<tr><td>${label}</td>${cells(r)}</tr>`;
   const slLabel = sl => `<span class="swatch" style="background:var(--series-${sl})"></span> ${SL_SHAPES[sl]} SL ${sl}`;
   const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
 
   // Summary table: by Service Level, then by tier.
-  let h = '<table><thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
+  let h = '<table class="fixed summary"><colgroup><col class="c-label"><col class="c-count"><col class="c-time"><col class="c-time"><col class="c-p95"><col class="c-time"></colgroup>'
+    + '<thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
   h += '<tr class="group"><td colspan="6">By Service Level</td></tr>';
   sum.bySL.forEach((r, i) => { h += row(slLabel(i + 1), r); });
   if (weighted) {
@@ -1029,14 +1031,16 @@ function renderLatency() {
   const order = sim.cfg.subaccounts.map((_, i) => i)
     .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
   const groups = [['All messages', null], ...(tsOn ? [1, 2, 3].map(sl => [slLabel(sl), sl]) : [])];
-  const subBar = v => `<span class="bar-cell">${fmt(v, 2)} s<i style="width:${Math.round((v / allMax) * 28)}px"></i></span>`;
+  const subBar = bar;
   const short = r => r.count
     ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${subBar(r.p95)}</td>`
     : '<td class="g-start empty">–</td><td class="empty">–</td><td class="empty">–</td>';
-  let t = `<table class="sub-latency${weighted ? ' has-tier' : ''}"><thead><tr><th rowspan="2">Subaccount</th>`;
+  const groupCols = '<col class="c-count"><col class="c-time"><col class="c-p95">';
+  let t = `<table class="fixed sub-latency${weighted ? ' has-tier' : ''}"><colgroup><col class="c-sub">${weighted ? '<col class="c-tier">' : ''}${groupCols.repeat(groups.length)}</colgroup>`
+    + '<thead><tr><th rowspan="2">Subaccount</th>';
   if (weighted) t += '<th rowspan="2">Tier</th>';
   t += groups.map(([label]) => `<th colspan="3" class="g-start g-head">${label}</th>`).join('') + '</tr><tr>';
-  t += groups.map(() => '<th class="g-start">Delivered</th><th>Avg</th><th>p95</th>').join('') + '</tr></thead><tbody>';
+  t += groups.map(() => '<th class="g-start" title="Messages delivered">Msgs</th><th>Avg</th><th>p95</th>').join('') + '</tr></thead><tbody>';
   let lastTier = null;
   for (const i of order) {
     const sa = sim.cfg.subaccounts[i];
