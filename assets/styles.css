@@ -116,7 +116,7 @@ details summary { cursor: pointer; color: var(--text-secondary); margin-top: 10p
 .stream .x { position: absolute; top: 2px; right: 2px; }
 .stream .sl-tag { grid-column: 1 / -1; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 
-.stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .stat { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
 .stat .k { font-size: 11px; color: var(--text-secondary); }
 .stat .v { font-size: 20px; font-weight: 600; }

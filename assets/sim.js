@@ -8,9 +8,9 @@
 //                   ─► the tier's subaccounts on that level (equal split; one shared FIFO if None)
 //                   ─► egress to the message's destination carrier queue
 //
-// Each carrier has its own queue, drained at the carrier's own MPS limit
-// (scaled down while the carrier is degraded, 0 during an outage). A carrier
-// backing up never slows the sender-type queues or the other carriers.
+// Each carrier has its own queue, drained at a fixed carrier rate (reduced
+// while the carrier is degraded, 0 during an outage). A carrier backing up
+// never slows the sender-type queues or the other carriers.
 //
 // At every level, a node's share is its weight over the summed weights of the
 // siblings that are currently *sending* (an active stream or messages waiting).
@@ -37,6 +37,11 @@ const SENDER_TYPES = [
 const carrierName = i => `Carrier ${i + 1}`;
 
 const CARRIER_COUNT = 3;
+// Carriers drain at a fixed internal rate, independent of the customer's
+// egress MPS, Traffic Shaping and Multi-Tenancy. It isn't shown or
+// configurable; it only needs to be slow enough for a backlog to be visible.
+const CARRIER_MPS = 50;
+const DEGRADED_FRACTION = 0.2;
 const TIER_COUNT = 3;
 
 // Default MessageIntent → Service Level mapping, per Twilio docs.
@@ -284,7 +289,7 @@ class Simulation {
     cq.tickIn = 0;
     // Carrier queues drain independently at their own (status-adjusted) limit.
     for (const c of cq.carriers) {
-      c.limitNow = this.carrierLimit(cq, c);
+      c.limitNow = this.carrierLimit(c);
       c.credit += c.limitNow * dt;
       let n = 0;
       while (c.credit >= 1 - 1e-9 && c.q.length) {
@@ -312,14 +317,13 @@ class Simulation {
     return n;
   }
 
-  // A carrier's MPS right now: its limit, scaled by its status during the
-  // incident window (degraded = pct% of limit, outage = 0).
-  carrierLimit(cq, c) {
-    const limit = c.mps ?? cq.mps;
+  // A carrier's rate right now: the fixed carrier rate, reduced while it is
+  // degraded and 0 during an outage (only inside the incident window).
+  carrierLimit(c) {
     const inWindow = this.t >= (c.from ?? 0) && this.t < (c.to ?? Infinity);
-    if (!inWindow || !c.status || c.status === 'healthy') return limit;
+    if (!inWindow || !c.status || c.status === 'healthy') return CARRIER_MPS;
     if (c.status === 'outage') return 0;
-    return (limit * (c.pct ?? 20)) / 100;
+    return CARRIER_MPS * DEGRADED_FRACTION;
   }
 
   // Message leaves its Service Level / tier lane and joins its carrier's queue.

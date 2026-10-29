@@ -18,12 +18,12 @@ const SL_SHAPES = ['', '●', '■', '▲'];
 
 // ---------------------------------------------------------------- state
 
-const defaultCarrier = mps => ({ mps, status: 'healthy', pct: 20, from: 0, to: null });
+const defaultCarrier = () => ({ status: 'healthy', from: 0, to: null });
 
 function defaultCarriers() {
   const out = {};
   for (const st of SENDER_TYPES) {
-    out[st.id] = { mps: st.defaultMps, carriers: Array.from({ length: CARRIER_COUNT }, () => defaultCarrier(st.defaultMps)) };
+    out[st.id] = { mps: st.defaultMps, carriers: Array.from({ length: CARRIER_COUNT }, defaultCarrier) };
   }
   return out;
 }
@@ -33,7 +33,10 @@ function withCarriers(senderTypes) {
   const out = { ...defaultCarriers(), ...senderTypes };
   for (const st of SENDER_TYPES) {
     const cfg = out[st.id];
-    cfg.carriers = Array.from({ length: CARRIER_COUNT }, (_, i) => ({ ...defaultCarrier(cfg.mps), ...(cfg.carriers?.[i] || {}) }));
+    cfg.carriers = Array.from({ length: CARRIER_COUNT }, (_, i) => {
+      const { status, from, to } = { ...defaultCarrier(), ...(cfg.carriers?.[i] || {}) };
+      return { status, from, to };
+    });
   }
   return out;
 }
@@ -162,7 +165,7 @@ const PRESETS = {
   carrierOutage: {
     label: 'Carrier outage: Carrier 2 down 6–14 s, 9 queues',
     ts: 'weighted', mt: 'weighted',
-    carriers: { shortcode: [{ mps: 40 }, { mps: 40, status: 'outage', from: 6, to: 14 }, { mps: 40 }] },
+    carriers: { shortcode: [{}, { status: 'outage', from: 6, to: 14 }, {}] },
     subaccounts: [
       { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
       { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
@@ -399,11 +402,9 @@ function renderCarriers() {
   const cards = cfg.carriers.map((c, i) => {
     const status = select([['healthy', '✓ Healthy'], ['degraded', '▲ Degraded'], ['outage', '✕ Outage']], c.status, v => { c.status = v; renderCarriers(); });
     const card = el('div', { class: `carrier-card ${c.status}` },
-      el('div', { class: 'carrier-card-head' }, el('b', {}, carrierName(i)), status),
-      el('label', {}, 'Carrier MPS limit', numInput(c.mps, v => { c.mps = v; }, { min: 0, step: 1 })));
+      el('div', { class: 'carrier-card-head' }, el('b', {}, carrierName(i)), status));
     if (c.status !== 'healthy') {
       const row = el('div', { class: 'carrier-incident' });
-      if (c.status === 'degraded') row.append(el('label', {}, '% of limit', numInput(c.pct, v => { c.pct = Math.min(100, v); }, { min: 0, max: 100, step: 5 })));
       row.append(
         el('label', {}, 'From (s)', numInput(c.from, v => { c.from = v; }, { min: 0, step: 0.5 })),
         el('label', {}, 'Until (s)', el('input', {
@@ -415,7 +416,7 @@ function renderCarriers() {
     return card;
   });
   $('#carriers').replaceChildren(field,
-    el('p', { class: 'hint' }, 'Each carrier has its own queue and MPS limit. A degraded carrier or an outage only backs up that carrier\'s queue; the other carriers and the Service Level / tier queues keep moving.'),
+    el('p', { class: 'hint' }, 'Each carrier has its own queue, drained at the carrier\'s own rate. The customer\'s MPS, Traffic Shaping and Multi-Tenancy don\'t change carrier rates. A degraded carrier (slowed) or an outage (stopped) only backs up that carrier\'s queue; the other carriers and the Service Level / tier queues keep moving.'),
     ...cards);
 }
 
@@ -536,7 +537,7 @@ function startSim() {
     if (!boxes || flying.length > 600) return;
     const g = boxes[m.ci];
     // Land at the current tail of that carrier's queue (head is on the right).
-    const depth = Math.min(cq.carriers[m.ci].q.length, Math.floor((g.qx1 - g.qx0 - 46) / 7));
+    const depth = Math.min(cq.carriers[m.ci].q.length, Math.floor((g.qx1 - g.qx0) / 7));
     flying.push({ sl: m.sl, x0: layout.laneEnd, y0: m.y, x1: g.qx1 - 4 - depth * 7, y1: g.y + g.h - 10, t: 0 });
   };
   flying = [];
@@ -795,12 +796,11 @@ function draw(dtReal) {
       ctx.font = '11px system-ui, sans-serif';
       ctx.fillStyle = colors.text2;
       ctx.textAlign = 'right';
-      ctx.fillText(`out ${fmt(c.outNow, 1)} / ${fmt(c.limitNow, 0)} MPS`, g.x + g.w - 10, g.y + 12);
+      ctx.fillText(`${fmtInt(c.q.length)} queued`, g.x + g.w - 10, g.y + 12);
 
       // carrier queue track: head on the right, tail grows left; backlog count at the far left
       const ty = g.y + g.h - 10;
-      const tx0 = g.qx0 + 46;
-      ctx.fillText(`${fmtInt(c.q.length)} q`, g.qx0 + 38, ty);
+      const tx0 = g.qx0;
       ctx.textAlign = 'left';
       ctx.strokeStyle = colors.grid;
       ctx.beginPath(); ctx.moveTo(tx0, ty); ctx.lineTo(g.qx1, ty); ctx.stroke();
@@ -883,9 +883,6 @@ canvas.addEventListener('mousemove', e => {
     const oldest = c.q.length ? sim.t - c.q.at(0).t0 : 0;
     showTip(e, `${carrierName(hit.ci)} · ${stLabel}`, [
       ['Status', STATUS_CHIP[status]],
-      ['MPS limit now', `${fmt(c.limitNow, 1)} of ${fmt(c.mps ?? hit.cq.mps, 0)}`],
-      ['Ingress', `${fmt(c.inNow, 1)} msg/s`],
-      ['Egress', `${fmt(c.outNow, 1)} MPS`],
       ['Queued at carrier', fmtInt(c.q.length)],
       ['Oldest wait', `${fmt(oldest, 2)} s`],
       ['Delivered', fmtInt(c.delivered)],
@@ -899,7 +896,6 @@ canvas.addEventListener('mouseleave', hideTip);
 function renderStats() {
   const delivered = sim ? sim.queues.reduce((s, q) => s + q.delivered, 0) : 0;
   const sent = sim ? sim.nextId : 0;
-  const rate = sim ? sim.queues.reduce((s, q) => s + q.carriers.reduce((t, c) => t + c.outNow, 0), 0) : 0;
   const atCarrier = sim ? sim.inCarrier : 0;
   const tiles = [
     ['Simulated time', sim ? `${fmt(sim.t, 1)} s` : '0.0 s'],
@@ -907,7 +903,6 @@ function renderStats() {
     ['Waiting in Twilio queues', fmtInt(sim ? sim.totalQueued - atCarrier : 0)],
     ['Waiting at carriers', fmtInt(atCarrier)],
     ['Delivered by carriers', fmtInt(delivered)],
-    ['Carrier throughput', `${fmt(rate, 0)} MPS`],
   ];
   const box = $('#stats');
   if (box.children.length !== tiles.length) {

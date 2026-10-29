@@ -38,7 +38,7 @@ sender-type egress MPS
   └─ Traffic Shaping: Service Level 1 / 2 / 3     (by SL weight; one group if None)
        └─ Multi-Tenancy: tier 1 / 2 / 3, per level  (by tier weight; one tier if None/Even)
             └─ the tier's subaccounts on that level (equal split; one shared FIFO if MT is None)
-                 └─ egress → Carrier 1, Carrier 2, Carrier 3 queues (each drains at its own limit)
+                 └─ egress → Carrier 1, Carrier 2, Carrier 3 queues (each drains independently)
 ```
 
 For example, with 100 MPS, Traffic Shaping at 50/30/20 and tiers at 60/30/10, if every tier is sending on all three levels, SL 1 gets 50 MPS and splits it **30 / 15 / 5** across Tiers 1 / 2 / 3. Across all levels, Tier 1 gets 30 / 18 / 12.
@@ -56,10 +56,10 @@ The simulator models three sender types: **Short Code** (default 100 MPS), **Lon
 
 Each carrier has **its own queue**. A message that leaves a Service Level or tier queue joins its carrier's queue, and counts as delivered only when the carrier accepts it.
 
-- Each carrier drains at its own **MPS limit**. The default is the sender type's egress MPS, so a healthy carrier never becomes the bottleneck.
-- A carrier can be **✓ Healthy** (full limit), **▲ Degraded** (a set percentage of its limit) or **✕ Outage** (0 MPS), during an optional time window.
+- Carriers drain at their own fixed rate. It is **not shown and not configurable**, and the customer's egress MPS, Traffic Shaping and Multi-Tenancy have no effect on it.
+- A carrier can be **✓ Healthy**, **▲ Degraded** (slowed) or **✕ Outage** (stopped), during an optional time window.
 - **A carrier problem stays with that carrier.** A degraded carrier or an outage only backs up that carrier's queue. The other carriers keep delivering, and the Service Level and tier queues keep sending at their usual rates.
-- When a carrier recovers, it clears its backlog at its full limit.
+- When a carrier recovers, it clears its backlog at its normal rate.
 - Wait times include time spent in a carrier queue, and a run finishes only when every carrier queue is empty.
 - Sender types are independent. Traffic on Short Code never affects Long Code.
 
@@ -152,7 +152,7 @@ Tier weights only change the split **within a Service Level**. If each subaccoun
 | **Scenario** | Pick a built-in or saved preset. Save, update or delete your own (see [Presets](#presets)). |
 | **Traffic Shaping** | None or Weighted, the SL 1/2/3 weights (slider or number), and the `MessageIntent` → Service Level mapping. |
 | **Multi-Tenancy** | None, Even or Weighted, the three tier weights (Weighted only), and each subaccount's name, tier and sender types. Subaccounts can be added or removed. |
-| **Carriers by sender type** | The egress MPS for Short Code, Alphanumeric and Long Code, plus each carrier's MPS limit and status (Healthy, Degraded with a % of limit, or Outage), with an optional From / Until window in simulated seconds. |
+| **Carriers by sender type** | The egress MPS for Short Code, Alphanumeric and Long Code, plus each carrier's status (Healthy, Degraded or Outage) with an optional From / Until window in simulated seconds. |
 | **Traffic** | Message streams. Each stream has a subaccount, a sender type (limited to that subaccount's types), a `MessageIntent`, a rate in msg/s, a start time and a duration, in simulated seconds. |
 
 The settings lock while a simulation runs. **Reset** unlocks them.
@@ -171,15 +171,15 @@ The settings lock while a simulation runs. **Reset** unlocks them.
   - **in**: messages arriving per second (the total rate of its active streams);
   - **out**: MPS leaving the queue right now;
   - **alloc**: the most MPS the queue could reach right now (never a guarantee).
-- Messages that leave a queue fly into one of the **carrier lanes** on the right. Each carrier lane shows its status chip, its own queue of messages, its backlog, and `out / limit MPS`. A degraded or failed carrier is outlined in its status color.
-- **Hovering** a lane shows its backlog, oldest wait, ingress, egress, and the maximum it could achieve now. Hovering a carrier lane shows its status, current limit, ingress, egress, backlog and oldest wait. Hovering the egress meter shows totals.
+- Messages that leave a queue fly into one of the **carrier lanes** on the right. Each carrier lane shows its status chip, its own queue of messages, and its backlog. A degraded or failed carrier is outlined in its status color.
+- **Hovering** a lane shows its backlog, oldest wait, ingress, egress, and the maximum it could achieve now. Hovering a carrier lane shows its status, backlog, oldest wait and messages delivered. Hovering the egress meter shows totals.
 - When a run finishes, the animation keeps going until the last in-flight message reaches its carrier, then stops.
 
 All live readouts are recomputed every step, so you see a change in throughput as soon as it happens, without any averaging delay.
 
 ### Results
 
-- **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, messages delivered by carriers, and carrier throughput.
+- **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
 - **Messages waiting in queue, by Service Level** is a line chart of backlog over time. Hover it for exact values.
 - **Time spent in queue** is a table of delivered count, average, p50, p95 and max wait, by Service Level and by subaccount.
 
@@ -194,7 +194,7 @@ All live readouts are recomputed every step, so you see a change in throughput a
 | Mixed sender types | None / None | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |
 | 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
 | 9 queues: tiers and levels starting and stopping in waves | Weighted / Weighted | SL 3 from every tier, then SL 2 joins (staggered by tier), then short SL 1 bursts, then everything winds down. It shows each level's share moving between tiers and levels as they start, stop and drain. |
-| Carrier outage: Carrier 2 down 6–14 s, 9 queues | Weighted / Weighted | Nine queues on Short Code, with each carrier limited to 40 MPS. Carrier 2 has an outage from 6 to 14 s, so its queue backs up while Carriers 1 and 3 keep delivering. Once Carrier 2 recovers, it drains the backlog at 40 MPS. |
+| Carrier outage: Carrier 2 down 6–14 s, 9 queues | Weighted / Weighted | Nine queues on Short Code. Carrier 2 has an outage from 6 to 14 s, so its queue backs up while Carriers 1 and 3 keep delivering and the Service Level / tier queues are unaffected. Once Carrier 2 recovers, it drains its backlog. |
 | Shared tiers: 5 subaccounts, 2 per tier, all Service Levels | Weighted / Weighted | Two subaccounts each in Tiers 1 and 2 and one in Tier 3, on all three levels (15 queues). Tier-mates split their tier's share on each level, e.g. SL 1: 15 + 15 / 7.5 + 7.5 / 5. |
 | Even Multi-Tenancy: 3 subaccounts × 3 Service Levels | Weighted / Even | Two subaccounts on SL 1, three on SL 2, two on SL 3 (a third joins SL 3 partway through): SL 1 = 25 / 25, SL 2 = 10 / 10 / 10, SL 3 = 10 / 10, then 6.7 each. |
 
@@ -229,7 +229,7 @@ The app is plain HTML, CSS and JavaScript, with no dependencies or bundler.
   2. **alloc**: for each sending queue, the same split again with *that* queue's demand set to unlimited, which gives the most it could reach now.
   3. **Egress**: with the messages actually waiting, to deliver this step's messages.
 - Fractional capacity carries over between steps as per-queue credit, so a queue drawing 71.4 MPS sends exactly that over time.
-- Messages leaving a lane go to `toCarrier()`, which puts them in their carrier's queue. Each carrier then drains independently at `carrierLimit()` (its limit, scaled by its status in the incident window), and `deliver()` records the message as delivered.
+- Messages leaving a lane go to `toCarrier()`, which puts them in their carrier's queue. Each carrier then drains independently at `carrierLimit()` (the fixed `CARRIER_MPS`, reduced while degraded and 0 during an outage), and `deliver()` records the message as delivered.
 
 ## Deploying to Twilio Serverless
 
