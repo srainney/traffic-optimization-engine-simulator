@@ -169,7 +169,7 @@ function renderTrafficShaping() {
   setSeg($('#ts-mode'), state.ts.mode);
   const on = state.ts.mode === 'weighted';
   $('#ts-hint').innerHTML = on
-    ? 'Each message gets a Service Level from its <code>MessageIntent</code>. Each sender type\'s queue is split into one queue per level, and when several levels have messages waiting, each drains at its weight divided by the total weight of those levels. Throughput a level isn\'t using goes to the levels that still have messages waiting.'
+    ? 'Each message gets a Service Level from its <code>MessageIntent</code>. Traffic Shaping applies <b>after</b> Multi-Tenancy: each tier\'s (or subaccount\'s) throughput is split between the levels it has messages on, by weight. For example, a tier with 60 MPS sending on all three levels at 50/30/20 gives 30 / 18 / 12. Throughput a level isn\'t using goes to the levels that still have messages waiting.'
     : 'All messages share one first-in, first-out queue per sender type, whatever their <code>MessageIntent</code>. Messages are still colored by the Service Level they <i>would</i> get.';
 
   const box = $('#ts-weights');
@@ -199,9 +199,9 @@ function renderTrafficShaping() {
 function renderMultiTenancy() {
   setSeg($('#mt-mode'), state.mt.mode);
   const hints = {
-    none: 'Within each Service Level, all subaccounts share one first-in, first-out queue, so a high-volume subaccount can crowd out the others.',
-    even: 'Within each Service Level, the subaccounts currently sending split that level\'s throughput evenly. A subaccount\'s unused share goes first to the others on the same level.',
-    weighted: 'Within each Service Level, the 3 tiers split that level\'s throughput by weight, and the subaccounts in a tier split the tier\'s share evenly. Only tiers currently sending count, so a lone sending tier gets the whole level.',
+    none: 'All subaccounts share the sender type\'s throughput through one first-in, first-out queue per Service Level, so a high-volume subaccount can crowd out the others.',
+    even: 'Applied first: the subaccounts currently sending split the sender type\'s throughput evenly. Traffic Shaping then splits each subaccount\'s share between its Service Levels.',
+    weighted: 'Applied first: the tiers currently sending split the sender type\'s throughput by tier weight. Traffic Shaping then splits each tier\'s share between its Service Levels, and the tier\'s subaccounts on a level share that level\'s throughput equally.',
   };
   $('#mt-hint').textContent = hints[state.mt.mode];
 
@@ -489,6 +489,9 @@ function computeLayout() {
     if (!usedTypes.has(cq.stId)) continue;
     const lanes = [];
     for (const group of cq.groups) for (const tier of group.tiers) for (const t of tier.tenants) lanes.push({ group, tier, tenant: t, leaf: t.leaf });
+    // Order lanes like the allocation: tier → level → subaccount (Even: subaccount → level).
+    const even = sim.cfg.mt.mode === 'even';
+    lanes.sort((a, b) => (even ? a.tenant.sub - b.tenant.sub : a.tier.idx - b.tier.idx) || a.group.sl - b.group.sl || a.tenant.sub - b.tenant.sub);
     const nc = cq.carriers.length;
     const h = HEAD_H + Math.max(lanes.length * LANE_H, nc * CBOX_H + (nc - 1) * CBOX_GAP) + ROW_PAD;
     const row = { cq, y, h, lanes };
@@ -520,9 +523,10 @@ function shape(sl, x, y, r) {
 }
 
 function laneLabel(cq, lane) {
-  const parts = [lane.leaf.sl ? `SL ${lane.leaf.sl}` : 'All levels'];
+  const parts = [];
   const mode = sim.cfg.mt.mode;
   if (mode === 'weighted') parts.push(`Tier ${lane.tier.idx + 1}`);
+  parts.push(lane.leaf.sl ? `SL ${lane.leaf.sl}` : 'All levels');
   if (mode === 'none') parts.push('FIFO (all subaccounts)');
   else parts.push(`${String.fromCharCode(65 + lane.tenant.sub)} · ${sim.cfg.subaccounts[lane.tenant.sub].name}`);
   return parts.join(' · ');

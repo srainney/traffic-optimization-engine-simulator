@@ -31,15 +31,17 @@ Choose a preset, set Traffic Shaping and Multi-Tenancy, and press **▶ Start si
 
 ## How it works
 
-Each sender type's throughput is divided in a fixed order. Traffic Shaping comes first, then Multi-Tenancy:
+Each sender type's throughput is divided in a fixed order. **Multi-Tenancy comes first, then Traffic Shaping:**
 
 ```
 sender-type egress MPS
-  └─ Traffic Shaping: Service Level 1 / 2 / 3   (by SL weight; one group if None)
-       └─ Multi-Tenancy tier 1 / 2 / 3          (by tier weight; Weighted mode only)
-            └─ subaccounts                       (even split; one shared FIFO if None)
+  └─ Multi-Tenancy: tier 1 / 2 / 3                (by tier weight; Even = one equal share per subaccount)
+       └─ Traffic Shaping: Service Level 1 / 2 / 3  (by SL weight, inside the tier's share)
+            └─ the tier's subaccounts on that level  (equal split; one shared FIFO if MT is None)
                  └─ egress → Carrier 1, Carrier 2, Carrier 3
 ```
+
+For example, with 100 MPS, tiers at 60/30/10 and Traffic Shaping at 50/30/20, if every tier is sending on all three levels, Tier 1 gets 60 MPS and splits it **30 / 18 / 12** across SL 1 / 2 / 3.
 
 The model advances in 20 ms steps. Every step it decides how much each queue may send and delivers messages first-in, first-out within each queue.
 
@@ -53,7 +55,7 @@ The simulator models three sender types: **Short Code** (default 100 MPS), **Lon
 
 ### Traffic Shaping
 
-Traffic Shaping assigns each message a **Service Level** (SL) from its `MessageIntent`, and divides throughput between the levels by weight.
+Traffic Shaping assigns each message a **Service Level** (SL) from its `MessageIntent`. Then, **inside each Multi-Tenancy tier's share** (or the whole sender type if Multi-Tenancy is None), it divides throughput between the levels by weight.
 
 | Mode | Behavior |
 |---|---|
@@ -68,9 +70,9 @@ The default `MessageIntent` → Service Level mapping follows Twilio's docs and 
 | SL 2 | `customercare`, `delivery`, `education`, `events` |
 | SL 3 | `polling`, `announcements`, `marketing`, and messages with no intent |
 
-**The weighting rule:** when several levels have messages waiting, each drains at its weight divided by the total weight of those levels. Levels that aren't sending take nothing.
+**The weighting rule:** when several levels have messages waiting in the same share, each gets its weight divided by the total weight of those levels. Levels that aren't sending take nothing.
 
-With 100 MPS, weights 50/30/20, and every sending level backlogged:
+With a 100 MPS share, weights 50/30/20, and every sending level backlogged:
 
 | Levels sending | SL 1 | SL 2 | SL 3 |
 |---|---|---|---|
@@ -84,13 +86,13 @@ These figures are **maximums, not guarantees**. Nothing is reserved: if SL 1 sen
 
 ### Multi-Tenancy
 
-Multi-Tenancy divides **each Service Level's throughput** between subaccounts. If Traffic Shaping is None, it divides the whole sender type instead.
+Multi-Tenancy is applied **first**. It divides the sender type's throughput between subaccounts, and Traffic Shaping then works inside each share.
 
 | Mode | Behavior |
 |---|---|
 | **None** (default) | All subaccounts share one first-in, first-out queue per Service Level. A high-volume subaccount can delay everyone else on that level. |
-| **Even** | Each subaccount gets its own queue. The subaccounts currently sending on a level split that level's throughput equally. |
-| **Weighted** | There are exactly **three tiers**, each with a weight (defaults **60 / 30 / 10**), and each subaccount is assigned to one tier. A level's throughput is split between the tiers currently sending, by tier weight. The subaccounts in a tier then split the tier's share evenly. |
+| **Even** | The subaccounts currently sending split the sender type's throughput equally. Traffic Shaping then splits each subaccount's share between its levels. |
+| **Weighted** | There are exactly **three tiers**, each with a weight (defaults **60 / 30 / 10**), and each subaccount is assigned to one tier. The tiers currently sending split the throughput by tier weight. Traffic Shaping splits each tier's share between the levels it has messages on, and the tier's subaccounts on a level share that level's throughput equally. |
 
 The same rule applies here as for Service Levels: only tiers or subaccounts with messages to send take part in the split, and any throughput they don't use goes to the others.
 
@@ -103,7 +105,7 @@ Throughput is never guaranteed. For every queue the simulator shows:
 - **alloc**: the **most MPS the queue could reach at this moment**. That is the rate it would get if it had unlimited messages waiting, given what every other queue is actually sending right now. It changes as other queues start, stop or speed up.
 - **out**: the MPS actually leaving the queue. It is never more than alloc.
 
-**Unused throughput moves to busy queues.** If a queue sends less than its weighted share (for example, 50 msg/s when its share would be 71.4), the difference goes to queues that still have messages waiting. It follows the same hierarchy: siblings come first (other subaccounts in the same tier, then other tiers on the same Service Level), then the other Service Levels by weight. As a result:
+**Unused throughput moves to busy queues.** If a queue sends less than its weighted share (for example, 50 msg/s when its share would be 71.4), the difference goes to queues that still have messages waiting. It follows the same hierarchy: siblings come first (other subaccounts on the same level in the tier, then the tier's other levels), then the other tiers by weight. As a result:
 
 - a sender type's total egress stays at its full MPS whenever any message is waiting;
 - when a queue empties, the others can use its share **on the next 20 ms step**.
@@ -112,7 +114,7 @@ A queue with a backlog keeps drawing its share until the backlog is gone, not ju
 
 ### Worked examples
 
-All of these use 100 MPS and Traffic Shaping at 50/30/20. "Backlogged" means the queue is sending faster than it can drain, so it always has messages waiting. Results come from running the simulator's model.
+All of these use 100 MPS, Traffic Shaping at 50/30/20 and (for Weighted) tiers at 60/30/10. "Backlogged" means the queue is sending faster than it can drain, so it always has messages waiting. Results come from running the simulator's model.
 
 | Scenario | in (msg/s) | out (MPS) | alloc (MPS) |
 |---|---|---|---|
@@ -120,25 +122,15 @@ All of these use 100 MPS and Traffic Shaping at 50/30/20. "Backlogged" means the
 | SL 1 sends 50, SL 3 backlogged | 50 / 300 | 50 / 50 | 71.4 / 50 |
 | SL 1 sends 1, SL 3 backlogged | 1 / 300 | 1 / 99 | 71.4 / 99 |
 | SL 1 and SL 3 each send 20 | 20 / 20 | 20 / 20 | 80 / 80 |
-| Even MT: A (SL 1) sends 10, B (SL 1) backlogged, C (SL 3) backlogged | 10 / 300 / 300 | 10 / 61.4 / 28.6 | 35.7 / 61.4 / 28.6 |
-| Weighted MT 60/30/10: Tier 1 and Tier 2 on SL 1, Tier 3 on SL 3, all backlogged | 300 each | 47.6 / 23.8 / 28.6 | 47.6 / 23.8 / 28.6 |
-| Same, but Tier 1 only sends 5 | 5 / 300 / 300 | 5 / 66.4 / 28.6 | 47.6 / 66.4 / 28.6 |
+| Weighted: one subaccount per tier, each sending on SL 1, 2 and 3 | 300 each | Tier 1: 30 / 18 / 12 · Tier 2: 15 / 9 / 6 · Tier 3: 5 / 3 / 2 | same as out |
+| Weighted: A (Tier 1) SL 1, B (Tier 3) SL 2, C (Tier 2) SL 3 | 300 each | 60 / 10 / 30 | 60 / 10 / 30 |
+| Weighted: A and B in Tier 1 (A SL 1, B SL 3), C in Tier 2 (SL 3) | 300 each | 47.6 / 19.0 / 33.3 | same as out |
+| Weighted: A (Tier 1) SL 1, B (Tier 2) SL 1, C (Tier 3) SL 3 | 300 each | 60 / 30 / 10 | 60 / 30 / 10 |
+| Same, but A only sends 5 | 5 / 300 / 300 | 5 / 71.3 / 23.8 | 60 / 71.3 / 23.8 |
+| Even: A on SL 1 and SL 3, B on SL 3 | 300 each | A 35.7 + 14.3 · B 50 | same as out |
+| Even: A (SL 1) sends 10, B (SL 1) backlogged, C (SL 3) backlogged | 10 / 300 / 300 | 10 / 45 / 45 | 33.3 / 45 / 45 |
 
-How to read alloc: a backlogged queue is already sending as fast as it can, so its alloc equals its out. A light queue's alloc is what it *could* reach if it sent more. For SL 1 sending 50, that is 71.4, because SL 3 would drop back to 28.6. In the Multi-Tenancy rows, the spare capacity stays on SL 1, going to B or Tier 2, while SL 3 stays at 28.6.
-
-### Cross-check with throughput-viz
-
-The weighting matches [ankurkwv/throughput-viz](https://github.com/ankurkwv/throughput-viz), in particular its combined Multi-Tenancy and Traffic Shaping scenario (`7-multi-with-traffic-shaping-script.js`). It works **levels first**: each Service Level with messages gets its weighted share of the total, and that share is then split between the tiers with messages on that level, and evenly between the subaccounts in each tier.
-
-We ported its `shape()` function and ran it against this simulator's model (100 MPS, every queue backlogged). The results matched exactly:
-
-| Scenario | throughput-viz | This simulator |
-|---|---|---|
-| A (Tier 1) SL 1, B (Tier 3) SL 2, C (Tier 2) SL 3; TS 50/30/20, MT 60/30/10 | 50 / 30 / 20 | 50 / 30 / 20 |
-| Its own config: SL 7/3, tiers 6/4, three subaccounts on both levels | 14 / 14 / 42 and 6 / 6 / 18 | same |
-| A, B, C in Tiers 1, 2, 3, all on SL 1 | 60 / 30 / 10 | 60 / 30 / 10 |
-
-Tier weights only change the split between subaccounts **on the same Service Level**. If each subaccount sends on a different level, the levels' weights decide the split by themselves.
+How to read alloc: a backlogged queue is already sending as fast as it can, so its alloc equals its out. A light queue's alloc is what it *could* reach if it sent more. For SL 1 sending 50, that is 71.4, because SL 3 would drop back to 28.6. When a subaccount or tier uses less than its share, its unused throughput is split between the other tiers or subaccounts by their weights.
 
 ## Using the simulator
 
@@ -214,7 +206,7 @@ The app is plain HTML, CSS and JavaScript, with no dependencies or bundler.
 ### Model internals (`sim.js`)
 
 - `Simulation.step(dt)` emits messages from active streams, then calls `serve()` for each sender type.
-- `rateSplit()` applies the hierarchy (Service Level, then tier, then subaccount) using `waterfill()`, a weighted max-min fair split. Capacity a queue can't use is re-split among the others, siblings first and then up the hierarchy.
+- `rateSplit()` applies the hierarchy (tier, then Service Level, then subaccount; Even treats each subaccount as its own tier) using `waterfill()`, a weighted max-min fair split. Capacity a queue can't use is re-split among the others, siblings first and then up the hierarchy.
 - `serve()` uses `rateSplit()` three ways each step:
   1. **out**: with each queue's current demand (unlimited if backlogged, otherwise its ingress).
   2. **alloc**: for each sending queue, the same split again with *that* queue's demand set to unlimited, which gives the most it could reach now.
