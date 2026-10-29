@@ -18,10 +18,22 @@ const SL_SHAPES = ['', '●', '■', '▲'];
 
 // ---------------------------------------------------------------- state
 
+const defaultCarrier = mps => ({ mps, status: 'healthy', pct: 20, from: 0, to: null });
+
 function defaultCarriers() {
   const out = {};
   for (const st of SENDER_TYPES) {
-    out[st.id] = { mps: st.defaultMps };
+    out[st.id] = { mps: st.defaultMps, carriers: Array.from({ length: CARRIER_COUNT }, () => defaultCarrier(st.defaultMps)) };
+  }
+  return out;
+}
+
+// Older saved presets have no per-carrier settings; fill them in.
+function withCarriers(senderTypes) {
+  const out = { ...defaultCarriers(), ...senderTypes };
+  for (const st of SENDER_TYPES) {
+    const cfg = out[st.id];
+    cfg.carriers = Array.from({ length: CARRIER_COUNT }, (_, i) => ({ ...defaultCarrier(cfg.mps), ...(cfg.carriers?.[i] || {}) }));
   }
   return out;
 }
@@ -147,6 +159,27 @@ const PRESETS = {
       { sub: 4, senderType: 'shortcode', intent: 'polling', rate: 4, start: 0, duration: 20 },
     ],
   },
+  carrierOutage: {
+    label: 'Carrier outage: Carrier 2 down 6–14 s, 9 queues',
+    ts: 'weighted', mt: 'weighted',
+    carriers: { shortcode: [{ mps: 40 }, { mps: 40, status: 'outage', from: 6, to: 14 }, { mps: 40 }] },
+    subaccounts: [
+      { name: 'Bank (Tier 1)', tier: 0, senderTypes: ['shortcode'] },
+      { name: 'Retailer (Tier 2)', tier: 1, senderTypes: ['shortcode'] },
+      { name: 'Startup (Tier 3)', tier: 2, senderTypes: ['shortcode'] },
+    ],
+    streams: [
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 12, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 8, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 8, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 6, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 6, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'events', rate: 4, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 4, start: 0, duration: 20 },
+    ],
+  },
   evenGrid: {
     label: 'Even Multi-Tenancy: 3 subaccounts × 3 Service Levels',
     ts: 'weighted', mt: 'even',
@@ -204,13 +237,16 @@ function applyPreset(key) {
     state.ts = { ...c.ts, mapping: { ...defaultMapping(), ...c.ts.mapping } };
     state.mt = { ...c.mt, tiers: Array.from({ length: TIER_COUNT }, (_, i) => c.mt.tiers[i] || { weight: 10 }) };
     state.subaccounts = c.subaccounts;
-    state.senderTypes = { ...defaultCarriers(), ...c.senderTypes };
+    state.senderTypes = withCarriers(c.senderTypes);
     state.streams = c.streams.filter(st => state.senderTypes[st.senderType]);
   } else {
     const p = PRESETS[key];
     state.ts = { mode: p.ts || 'none', weights: [50, 30, 20], mapping: defaultMapping() };
     state.mt = { mode: p.mt || 'none', tiers: [{ weight: 60 }, { weight: 30 }, { weight: 10 }] };
     state.senderTypes = defaultCarriers();
+    for (const [stId, list] of Object.entries(p.carriers || {})) {
+      list.forEach((c, i) => Object.assign(state.senderTypes[stId].carriers[i], c));
+    }
     state.subaccounts = p.subaccounts.map(s => ({ ...s, senderTypes: s.senderTypes.slice() }));
     state.streams = p.streams.map(s => ({ ...s }));
   }
@@ -359,9 +395,28 @@ function renderCarriers() {
 
   const cfg = state.senderTypes[state.stTab];
   const label = SENDER_TYPES.find(s => s.id === state.stTab).label;
-  const list = el('div', { class: 'carrier-list' }, `Egress to ${Array.from({ length: CARRIER_COUNT }, (_, i) => carrierName(i)).join(', ')}`);
   const field = el('label', {}, `${label} egress MPS`, numInput(cfg.mps, v => { cfg.mps = v; }, { min: 0, step: 1 }));
-  $('#carriers').replaceChildren(field, list);
+  const cards = cfg.carriers.map((c, i) => {
+    const status = select([['healthy', '✓ Healthy'], ['degraded', '▲ Degraded'], ['outage', '✕ Outage']], c.status, v => { c.status = v; renderCarriers(); });
+    const card = el('div', { class: `carrier-card ${c.status}` },
+      el('div', { class: 'carrier-card-head' }, el('b', {}, carrierName(i)), status),
+      el('label', {}, 'Carrier MPS limit', numInput(c.mps, v => { c.mps = v; }, { min: 0, step: 1 })));
+    if (c.status !== 'healthy') {
+      const row = el('div', { class: 'carrier-incident' });
+      if (c.status === 'degraded') row.append(el('label', {}, '% of limit', numInput(c.pct, v => { c.pct = Math.min(100, v); }, { min: 0, max: 100, step: 5 })));
+      row.append(
+        el('label', {}, 'From (s)', numInput(c.from, v => { c.from = v; }, { min: 0, step: 0.5 })),
+        el('label', {}, 'Until (s)', el('input', {
+          type: 'number', min: 0, step: 0.5, value: c.to ?? '', placeholder: 'end',
+          oninput: e => { const v = parseFloat(e.target.value); c.to = Number.isFinite(v) ? v : null; },
+        })));
+      card.append(row);
+    }
+    return card;
+  });
+  $('#carriers').replaceChildren(field,
+    el('p', { class: 'hint' }, 'Each carrier has its own queue and MPS limit. A degraded carrier or an outage only backs up that carrier\'s queue; the other carriers and the Service Level / tier queues keep moving.'),
+    ...cards);
 }
 
 function renderStreams() {
@@ -480,7 +535,9 @@ function startSim() {
     const boxes = layout.carrierBox.get(cq);
     if (!boxes || flying.length > 600) return;
     const g = boxes[m.ci];
-    flying.push({ sl: m.sl, x0: m.x, y0: m.y, x1: g.x + 10, y1: g.y + g.h / 2, t: 0 });
+    // Land at the current tail of that carrier's queue (head is on the right).
+    const depth = Math.min(cq.carriers[m.ci].q.length, Math.floor((g.qx1 - g.qx0 - 46) / 7));
+    flying.push({ sl: m.sl, x0: layout.laneEnd, y0: m.y, x1: g.qx1 - 4 - depth * 7, y1: g.y + g.h - 10, t: 0 });
   };
   flying = [];
   $('#stage-empty').hidden = true;
@@ -532,8 +589,13 @@ function frame(now) {
     renderLatency();
   }
   if (sim.done) {
-    sim.sample();
-    renderDepthChart(); renderLatency();
+    if (!sim.finished) {
+      sim.finished = true;
+      sim.sample();
+      renderDepthChart(); renderLatency();
+    }
+    // Keep animating until the last in-flight messages land in their carrier.
+    if (flying.length) { requestAnimationFrame(frame); return; }
     setRunning(false);
     draw(0);
     return;
@@ -554,6 +616,7 @@ function readColors() {
   colors = {
     surface: v('--surface-1'), surface2: v('--surface-2'), text: v('--text-primary'), text2: v('--text-secondary'),
     muted: v('--text-muted'), grid: v('--grid'), axis: v('--axis'), good: v('--good'), accent: v('--accent'),
+    healthy: v('--good'), degraded: v('--warning'), outage: v('--critical'),
     sl: ['#898781', v('--series-1'), v('--series-2'), v('--series-3')],
   };
 }
@@ -564,7 +627,8 @@ const LANE_H = 18;
 const HEAD_H = 28;
 const ROW_PAD = 14;
 const DOT_GAP = 10;
-const CBOX_H = 34;
+const CBOX_H = 40;
+const CBOX_W = 300;
 const CBOX_GAP = 6;
 
 function computeLayout() {
@@ -583,7 +647,10 @@ function computeLayout() {
     const h = HEAD_H + Math.max(lanes.length * LANE_H, nc * CBOX_H + (nc - 1) * CBOX_GAP) + ROW_PAD;
     const row = { cq, y, h, lanes };
     layout.rows.push(row);
-    layout.carrierBox.set(cq, cq.carriers.map((_, ci) => ({ x: W - 190, y: y + HEAD_H + ci * (CBOX_H + CBOX_GAP), w: 170, h: CBOX_H })));
+    layout.carrierBox.set(cq, cq.carriers.map((_, ci) => {
+      const x = W - CBOX_W - 16;
+      return { x, y: y + HEAD_H + ci * (CBOX_H + CBOX_GAP), w: CBOX_W, h: CBOX_H, qx0: x + 10, qx1: x + CBOX_W - 12 };
+    }));
     y += h + 8;
   }
   layout.height = Math.max(240, y + 4);
@@ -609,6 +676,14 @@ function shape(sl, x, y, r) {
   ctx.fill();
 }
 
+const STATUS_CHIP = { healthy: '✓ Healthy', degraded: '▲ Degraded', outage: '✕ Outage' };
+
+function carrierStatusNow(c) {
+  if (!c.status || c.status === 'healthy') return 'healthy';
+  const inWindow = sim.t >= (c.from ?? 0) && sim.t < (c.to ?? Infinity);
+  return inWindow ? c.status : 'healthy';
+}
+
 function laneLabel(cq, lane) {
   const parts = [lane.leaf.sl ? `SL ${lane.leaf.sl}` : 'All levels'];
   const mode = sim.cfg.mt.mode;
@@ -626,7 +701,8 @@ function draw(dtReal) {
   layout.hits = [];
   const labelW = Math.min(240, W * 0.26);
   const x0 = labelW + 16;
-  const x1 = W - 380;
+  const x1 = W - CBOX_W - 230;
+  layout.laneEnd = W - CBOX_W - 24;
   const maxDots = Math.max(1, Math.floor((x1 - x0 - 30) / DOT_GAP));
   const ease = dtReal > 0 ? Math.min(1, dtReal * 12) : 1;
 
@@ -695,15 +771,46 @@ function draw(dtReal) {
       layout.hits.push({ x: 6, y: ly - LANE_H / 2, w: x1 + 180, h: LANE_H, kind: 'lane', cq, lane });
     });
 
-    // carrier queues: destinations for this sender type's egress
+    // carrier queues: each carrier drains its own queue at its own limit
     layout.carrierBox.get(cq).forEach((g, ci) => {
+      const c = cq.carriers[ci];
+      const status = carrierStatusNow(c);
       ctx.fillStyle = colors.surface;
-      ctx.strokeStyle = colors.axis;
+      ctx.strokeStyle = status === 'healthy' ? colors.axis : colors[status];
+      ctx.lineWidth = status === 'healthy' ? 1 : 2;
       ctx.beginPath(); ctx.roundRect(g.x, g.y, g.w, g.h, 6); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1;
       ctx.fillStyle = colors.text;
       ctx.font = '600 12px system-ui, sans-serif';
-      ctx.fillText(carrierName(ci), g.x + 10, g.y + g.h / 2);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(carrierName(ci), g.x + 10, g.y + 12);
+      const chip = STATUS_CHIP[status];
+      ctx.font = '600 11px system-ui, sans-serif';
+      const cw = ctx.measureText(chip).width + 12;
+      const chipX = g.x + 76;
+      ctx.fillStyle = colors[status];
+      ctx.beginPath(); ctx.roundRect(chipX, g.y + 4, cw, 16, 8); ctx.fill();
+      ctx.fillStyle = status === 'degraded' ? '#0b0b0b' : '#ffffff';
+      ctx.fillText(chip, chipX + 6, g.y + 12);
       ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = colors.text2;
+      ctx.textAlign = 'right';
+      ctx.fillText(`out ${fmt(c.outNow, 1)} / ${fmt(c.limitNow, 0)} MPS`, g.x + g.w - 10, g.y + 12);
+
+      // carrier queue track: head on the right, tail grows left; backlog count at the far left
+      const ty = g.y + g.h - 10;
+      const tx0 = g.qx0 + 46;
+      ctx.fillText(`${fmtInt(c.q.length)} q`, g.qx0 + 38, ty);
+      ctx.textAlign = 'left';
+      ctx.strokeStyle = colors.grid;
+      ctx.beginPath(); ctx.moveTo(tx0, ty); ctx.lineTo(g.qx1, ty); ctx.stroke();
+      const cap = Math.max(1, Math.floor((g.qx1 - tx0) / 7));
+      const n = Math.min(c.q.length, cap);
+      for (let i = 0; i < n; i++) {
+        const m = c.q.at(i);
+        ctx.fillStyle = colors.sl[m.sl];
+        shape(m.sl, g.qx1 - 4 - i * 7, ty, 3);
+      }
       layout.hits.push({ x: g.x, y: g.y, w: g.w, h: g.h, kind: 'carrier', cq, ci });
     });
   }
@@ -714,7 +821,7 @@ function draw(dtReal) {
     f.t += dtReal / 0.35;
     if (f.t >= 1) continue;
     const k = f.t * f.t * (3 - 2 * f.t);
-    ctx.globalAlpha = 1 - f.t * 0.6;
+    ctx.globalAlpha = 1;
     ctx.fillStyle = colors.sl[f.sl];
     shape(f.sl, f.x0 + (f.x1 - f.x0) * k, f.y0 + (f.y1 - f.y0) * k, 4);
     next.push(f);
@@ -772,7 +879,15 @@ canvas.addEventListener('mousemove', e => {
     ]);
   } else {
     const c = hit.cq.carriers[hit.ci];
+    const status = carrierStatusNow(c);
+    const oldest = c.q.length ? sim.t - c.q.at(0).t0 : 0;
     showTip(e, `${carrierName(hit.ci)} · ${stLabel}`, [
+      ['Status', STATUS_CHIP[status]],
+      ['MPS limit now', `${fmt(c.limitNow, 1)} of ${fmt(c.mps ?? hit.cq.mps, 0)}`],
+      ['Ingress', `${fmt(c.inNow, 1)} msg/s`],
+      ['Egress', `${fmt(c.outNow, 1)} MPS`],
+      ['Queued at carrier', fmtInt(c.q.length)],
+      ['Oldest wait', `${fmt(oldest, 2)} s`],
       ['Delivered', fmtInt(c.delivered)],
     ]);
   }
@@ -784,13 +899,15 @@ canvas.addEventListener('mouseleave', hideTip);
 function renderStats() {
   const delivered = sim ? sim.queues.reduce((s, q) => s + q.delivered, 0) : 0;
   const sent = sim ? sim.nextId : 0;
-  const rate = sim ? sim.queues.reduce((s, q) => s + q.outNow, 0) : 0;
+  const rate = sim ? sim.queues.reduce((s, q) => s + q.carriers.reduce((t, c) => t + c.outNow, 0), 0) : 0;
+  const atCarrier = sim ? sim.inCarrier : 0;
   const tiles = [
     ['Simulated time', sim ? `${fmt(sim.t, 1)} s` : '0.0 s'],
     ['Messages sent', fmtInt(sent)],
-    ['Delivered to carrier', fmtInt(delivered)],
-    ['Waiting in queue', fmtInt(sim ? sim.totalQueued : 0)],
-    ['Total throughput', `${fmt(rate, 0)} MPS`],
+    ['Waiting in Twilio queues', fmtInt(sim ? sim.totalQueued - atCarrier : 0)],
+    ['Waiting at carriers', fmtInt(atCarrier)],
+    ['Delivered by carriers', fmtInt(delivered)],
+    ['Carrier throughput', `${fmt(rate, 0)} MPS`],
   ];
   const box = $('#stats');
   if (box.children.length !== tiles.length) {

@@ -14,6 +14,8 @@
   --series-2:       #eb6834; /* Service Level 2 */
   --series-3:       #1baf7a; /* Service Level 3 */
   --good:           #0ca30c;
+  --warning:        #fab219;
+  --critical:       #d03b3b;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) .viz-root {
@@ -114,7 +116,7 @@ details summary { cursor: pointer; color: var(--text-secondary); margin-top: 10p
 .stream .x { position: absolute; top: 2px; right: 2px; }
 .stream .sl-tag { grid-column: 1 / -1; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 
-.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
 .stat { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
 .stat .k { font-size: 11px; color: var(--text-secondary); }
 .stat .v { font-size: 20px; font-weight: 600; }
@@ -168,3 +170,9 @@ tr.group td { color: var(--text-secondary); font-weight: 600; border-bottom: 1px
 .preset-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .preset-actions .btn.small { margin-top: 0; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+
+.carrier-card { border: 1px solid var(--border); border-left: 3px solid var(--good); border-radius: 8px; padding: 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.carrier-card.degraded { border-left-color: var(--warning); }
+.carrier-card.outage { border-left-color: var(--critical); }
+.carrier-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.carrier-incident { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }

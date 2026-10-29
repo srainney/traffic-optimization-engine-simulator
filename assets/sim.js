@@ -8,6 +8,10 @@
 //                   ─► the tier's subaccounts on that level (equal split; one shared FIFO if None)
 //                   ─► egress to the message's destination carrier queue
 //
+// Each carrier has its own queue, drained at the carrier's own MPS limit
+// (scaled down while the carrier is degraded, 0 during an outage). A carrier
+// backing up never slows the sender-type queues or the other carriers.
+//
 // At every level, a node's share is its weight over the summed weights of the
 // siblings that are currently *sending* (an active stream or messages waiting).
 // With SL weights 50/30/20 and SL1 + SL3 both backlogged, SL1 gets
@@ -112,7 +116,9 @@ class Simulation {
     this.t = 0;
     this.nextId = 0;
     this.onArrive = null;
-    this.onDepart = null;
+    this.onDepart = null; // message left its lane for a carrier queue
+    this.onDeliver = null; // carrier accepted the message
+    this.inCarrier = 0;
 
     this.queues = [];
     this.byKey = {};
@@ -145,7 +151,10 @@ class Simulation {
     const { cfg } = this;
     const cq = {
       stId, mps: cfg.senderTypes[stId].mps, groups: [], leafOf: {}, rate: 0, inRate: 0, tickIn: 0, inNow: 0, outNow: 0, delivered: 0,
-      carriers: Array.from({ length: CARRIER_COUNT }, () => ({ delivered: 0, rate: 0, tick: 0 })),
+      carriers: Array.from({ length: CARRIER_COUNT }, (_, ci) => ({
+        ci, q: new Queue(), credit: 0, delivered: 0, rate: 0, tick: 0, inNow: 0, outNow: 0, limitNow: 0,
+        ...(cfg.senderTypes[stId].carriers?.[ci] || {}),
+      })),
     };
     const subs = cfg.subaccounts.map((_, i) => i).filter(i => (cfg.subaccounts[i].senderTypes || [stId]).includes(stId));
     const levels = cfg.ts.enabled ? [1, 2, 3] : [0];
@@ -236,6 +245,7 @@ class Simulation {
     const now = this.rateSplit(cq, cq.mps, nowDemand);
     cq.outNow = 0;
     for (const t of lanes) { t.leaf.outNow = now.get(t); cq.outNow += t.leaf.outNow; }
+    for (const c of cq.carriers) c.inNow = cq.outNow / cq.carriers.length;
 
     // 2. Alloc: the most each sending lane could achieve right now, i.e. its
     //    split if it alone had unlimited demand and everyone else kept
@@ -272,7 +282,18 @@ class Simulation {
     cq.rate += (cqServed / dt - cq.rate) * (dt / RATE_TAU);
     cq.inRate += (cq.tickIn / dt - cq.inRate) * (dt / RATE_TAU);
     cq.tickIn = 0;
+    // Carrier queues drain independently at their own (status-adjusted) limit.
     for (const c of cq.carriers) {
+      c.limitNow = this.carrierLimit(cq, c);
+      c.credit += c.limitNow * dt;
+      let n = 0;
+      while (c.credit >= 1 - 1e-9 && c.q.length) {
+        c.credit -= 1;
+        this.deliver(c.q.shift(), cq, c);
+        n++;
+      }
+      if (!c.q.length) c.credit = 0;
+      c.outNow = c.q.length ? c.limitNow : Math.min(c.limitNow, c.inNow);
       c.rate += (c.tick / dt - c.rate) * (dt / RATE_TAU);
       c.tick = 0;
     }
@@ -285,21 +306,41 @@ class Simulation {
     let n = 0;
     while (leaf.credit >= 1 - 1e-9 && leaf.q.length) {
       leaf.credit -= 1;
-      this.deliver(leaf.q.shift(), cq, leaf);
+      this.toCarrier(leaf.q.shift(), cq, leaf);
       n++;
     }
     return n;
   }
 
-  deliver(m, cq, leaf) {
+  // A carrier's MPS right now: its limit, scaled by its status during the
+  // incident window (degraded = pct% of limit, outage = 0).
+  carrierLimit(cq, c) {
+    const limit = c.mps ?? cq.mps;
+    const inWindow = this.t >= (c.from ?? 0) && this.t < (c.to ?? Infinity);
+    if (!inWindow || !c.status || c.status === 'healthy') return limit;
+    if (c.status === 'outage') return 0;
+    return (limit * (c.pct ?? 20)) / 100;
+  }
+
+  // Message leaves its Service Level / tier lane and joins its carrier's queue.
+  toCarrier(m, cq, leaf) {
+    const c = cq.carriers[m.ci];
+    c.q.push(m);
+    this.inCarrier++;
+    if (this.onDepart) this.onDepart(m, cq, leaf);
+  }
+
+  // Carrier accepts the message: it's delivered. Wait includes carrier queueing.
+  deliver(m, cq, c) {
     const wait = this.t - m.t0;
     this.queuedBySL[m.sl]--;
+    this.inCarrier--;
     this.latBySL[m.sl].push(wait);
     this.latBySub[m.sub].push(wait);
     cq.delivered++;
-    cq.carriers[m.ci].delivered++;
-    cq.carriers[m.ci].tick++;
-    if (this.onDepart) this.onDepart(m, cq, leaf);
+    c.delivered++;
+    c.tick++;
+    if (this.onDeliver) this.onDeliver(m, cq, c);
   }
 
   step(dt) {
