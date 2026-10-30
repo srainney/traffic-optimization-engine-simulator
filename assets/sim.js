@@ -31,8 +31,25 @@
 const SENDER_TYPES = [
   { id: 'shortcode', label: 'Short Code', defaultMps: 100 },
   { id: 'alpha', label: 'Alphanumeric', defaultMps: 30 },
-  { id: 'longcode', label: 'Long Code', note: 'excludes US 10DLC', defaultMps: 20 },
+  { id: 'longcode', label: 'Long Code (Int)', note: 'International long codes, for countries outside the US and Canada. Excludes US 10DLC: US and Canada A2P 10DLC traffic isn\'t part of Traffic Shaping or Multi-Tenancy.', defaultMps: 20 },
+  { id: 'tollfree', label: 'Toll-Free (US)', note: 'Toll-free numbers, for the US and Canada only. Each country still has its own toll-free throughput and queues.', defaultMps: 25 },
 ];
+
+// Destination countries. Each country in a scenario has its own sender-type
+// queues, egress MPS and carriers; one country's traffic never affects another.
+// Toll-Free (US) is only available in the US and Canada; Long Code (Int) and
+// Alphanumeric only outside them.
+const COUNTRIES = [
+  { id: 'US', name: 'United States', senderTypes: ['shortcode', 'tollfree'] },
+  { id: 'CA', name: 'Canada', senderTypes: ['shortcode', 'tollfree'] },
+  { id: 'GB', name: 'United Kingdom', senderTypes: ['shortcode', 'alpha', 'longcode'] },
+  { id: 'DE', name: 'Germany', senderTypes: ['shortcode', 'alpha', 'longcode'] },
+  { id: 'BR', name: 'Brazil', senderTypes: ['shortcode', 'alpha', 'longcode'] },
+  { id: 'IN', name: 'India', senderTypes: ['shortcode', 'alpha', 'longcode'] },
+  { id: 'AU', name: 'Australia', senderTypes: ['shortcode', 'alpha', 'longcode'] },
+];
+const countryById = id => COUNTRIES.find(c => c.id === id);
+const allowedIn = (cc, stId) => !!countryById(cc)?.senderTypes.includes(stId);
 
 const carrierName = i => `Carrier ${i + 1}`;
 
@@ -125,18 +142,24 @@ class Simulation {
     this.onDeliver = null; // carrier accepted the message
     this.inCarrier = 0;
 
+    // One set of sender-type queues per country, keyed "US|shortcode".
+    this.countries = cfg.countries;
     this.queues = [];
     this.byKey = {};
-    for (const st of SENDER_TYPES) {
-      const cq = this.buildSenderQueue(st.id);
-      this.queues.push(cq);
-      this.byKey[st.id] = cq;
+    for (const cc of this.countries) {
+      for (const st of SENDER_TYPES) {
+        if (!allowedIn(cc, st.id)) continue;
+        const cq = this.buildSenderQueue(cc, st.id);
+        this.queues.push(cq);
+        this.byKey[`${cc}|${st.id}`] = cq;
+      }
     }
 
     this.streams = [];
     cfg.subaccounts.forEach((sa, si) => {
       for (const s of sa.streams) {
-        const cq = this.byKey[s.senderType];
+        const cq = this.byKey[`${s.country}|${s.senderType}`];
+        if (!cq) continue;
         const leaf = cq.leafOf[cfg.ts.enabled ? this.serviceLevelFor(s.intent) : 0][si];
         if (leaf) this.streams.push({ ...s, sub: si, acc: 0, cq, leaf });
       }
@@ -150,20 +173,27 @@ class Simulation {
     this.latBySub = cfg.subaccounts.map(() => []);
     this.latByTier = [[], [], []];
     this.latBySubSL = cfg.subaccounts.map(() => [[], [], [], []]);
-    this.latBySubST = cfg.subaccounts.map(() => ({})); // sub → sender type → { all, sl[1..3] }
+    this.latBySubST = cfg.subaccounts.map(() => ({})); // sub → "country|sender type" → { all, sl[1..3] }
+    // Per-country counters and wait times, for the per-country charts and tables.
+    const nSub = cfg.subaccounts.length;
+    this.byCountry = Object.fromEntries(this.countries.map(cc => [cc, {
+      sl: [0, 0, 0, 0], tier: [0, 0, 0], sub: Array(nSub).fill(0),
+      latSL: [[], [], [], []], latTier: [[], [], []], latSub: Array.from({ length: nSub }, () => []),
+    }]));
     this.sentBySub = cfg.subaccounts.map(() => 0);
     this.timeline = [];
     this.nextSample = 0;
     this.sample();
   }
 
-  buildSenderQueue(stId) {
+  buildSenderQueue(cc, stId) {
     const { cfg } = this;
+    const stCfg = cfg.countryCfg[cc][stId];
     const cq = {
-      stId, mps: cfg.senderTypes[stId].mps, groups: [], leafOf: {}, rate: 0, inRate: 0, tickIn: 0, inNow: 0, outNow: 0, delivered: 0,
+      cc, stId, mps: stCfg.mps, groups: [], leafOf: {}, rate: 0, inRate: 0, tickIn: 0, inNow: 0, outNow: 0, delivered: 0,
       carriers: Array.from({ length: CARRIER_COUNT }, (_, ci) => ({
         ci, q: new Queue(), credit: 0, delivered: 0, rate: 0, tick: 0, inNow: 0, outNow: 0, limitNow: 0,
-        ...(cfg.senderTypes[stId].carriers?.[ci] || {}),
+        ...(stCfg.carriers?.[ci] || {}),
       })),
     };
     const subs = cfg.subaccounts.map((_, i) => i).filter(i => (cfg.subaccounts[i].senderTypes || [stId]).includes(stId));
@@ -214,6 +244,8 @@ class Simulation {
     this.queuedBySL[sl]++;
     this.queuedByTier[this.cfg.subaccounts[stream.sub].tier]++;
     this.queuedBySub[stream.sub]++;
+    const bc = this.byCountry[cq.cc];
+    bc.sl[sl]++; bc.tier[this.cfg.subaccounts[stream.sub].tier]++; bc.sub[stream.sub]++;
     this.sentBySub[stream.sub]++;
     if (this.onArrive) this.onArrive(m, cq, leaf);
   }
@@ -351,11 +383,15 @@ class Simulation {
     this.latBySL[m.sl].push(wait);
     this.latBySub[m.sub].push(wait);
     this.latBySubSL[m.sub][m.sl].push(wait);
-    const byST = this.latBySubST[m.sub][cq.stId] ||= { all: [], sl: [[], [], [], []] };
+    const byST = this.latBySubST[m.sub][`${cq.cc}|${cq.stId}`] ||= { all: [], sl: [[], [], [], []] };
     byST.all.push(wait);
     byST.sl[m.sl].push(wait);
     const tier = this.cfg.subaccounts[m.sub].tier;
     if (this.cfg.mt.mode === 'weighted' && this.latByTier[tier]) this.latByTier[tier].push(wait);
+    const bc = this.byCountry[cq.cc];
+    bc.sl[m.sl]--; bc.tier[tier]--; bc.sub[m.sub]--;
+    bc.latSL[m.sl].push(wait); bc.latSub[m.sub].push(wait);
+    if (this.cfg.mt.mode === 'weighted' && bc.latTier[tier]) bc.latTier[tier].push(wait);
     cq.delivered++;
     c.delivered++;
     c.tick++;
@@ -379,7 +415,9 @@ class Simulation {
   }
 
   sample() {
-    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1), tier: this.queuedByTier.slice(), sub: this.queuedBySub.slice() });
+    const c = {};
+    for (const [cc, bc] of Object.entries(this.byCountry)) c[cc] = { q: bc.sl.slice(1), tier: bc.tier.slice(), sub: bc.sub.slice() };
+    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1), tier: this.queuedByTier.slice(), sub: this.queuedBySub.slice(), c });
     this.nextSample += 0.25;
   }
 
@@ -393,9 +431,15 @@ class Simulation {
       byTier: this.latByTier.map(summarize),
       bySub: this.latBySub.map(summarize),
       bySubSL: this.latBySubSL.map(levels => [1, 2, 3].map(sl => summarize(levels[sl]))),
-      bySubST: this.latBySubST.map(byST => SENDER_TYPES.filter(st => byST[st.id]).map(st => ({
-        stId: st.id, all: summarize(byST[st.id].all), sl: [1, 2, 3].map(sl => summarize(byST[st.id].sl[sl])),
+      bySubST: this.latBySubST.map(byST => this.countries.flatMap(cc => SENDER_TYPES.filter(st => byST[`${cc}|${st.id}`]).map(st => {
+        const x = byST[`${cc}|${st.id}`];
+        return { cc, stId: st.id, all: summarize(x.all), sl: [1, 2, 3].map(sl => summarize(x.sl[sl])) };
       }))),
+      byCountry: Object.fromEntries(Object.entries(this.byCountry).map(([cc, bc]) => [cc, {
+        bySL: [1, 2, 3].map(sl => summarize(bc.latSL[sl])),
+        byTier: bc.latTier.map(summarize),
+        bySub: bc.latSub.map(summarize),
+      }])),
     };
   }
 }

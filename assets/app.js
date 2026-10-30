@@ -28,26 +28,30 @@ const subLetter = i => String.fromCharCode(65 + i);
 
 const defaultCarrier = () => ({ status: 'healthy', from: 0, to: null });
 
-function defaultCarriers() {
+// Per-country sender-type settings: { mps, carriers: [{ status, from, to }] }.
+function defaultCountryCfg(cc) {
   const out = {};
   for (const st of SENDER_TYPES) {
-    out[st.id] = { mps: st.defaultMps, carriers: Array.from({ length: CARRIER_COUNT }, defaultCarrier) };
+    if (allowedIn(cc, st.id)) out[st.id] = { mps: st.defaultMps, carriers: Array.from({ length: CARRIER_COUNT }, defaultCarrier) };
   }
   return out;
 }
 
-// Older saved presets have no per-carrier settings; fill them in.
-function withCarriers(senderTypes) {
-  const out = { ...defaultCarriers(), ...senderTypes };
-  for (const st of SENDER_TYPES) {
-    const cfg = out[st.id];
-    cfg.carriers = Array.from({ length: CARRIER_COUNT }, (_, i) => {
-      const { status, from, to } = { ...defaultCarrier(), ...(cfg.carriers?.[i] || {}) };
+// Fill in anything missing (new sender types, carrier settings) for a country.
+function withDefaults(cc, cfg = {}) {
+  const out = defaultCountryCfg(cc);
+  for (const [stId, d] of Object.entries(out)) {
+    const saved = cfg[stId] || {};
+    d.mps = saved.mps ?? d.mps;
+    d.carriers = d.carriers.map((def, i) => {
+      const { status, from, to } = { ...def, ...(saved.carriers?.[i] || {}) };
       return { status, from, to };
     });
   }
   return out;
 }
+
+const countryCfgFor = countries => Object.fromEntries(countries.map(cc => [cc, defaultCountryCfg(cc)]));
 
 function defaultMapping() {
   const m = {};
@@ -57,6 +61,8 @@ function defaultMapping() {
 
 const PRESETS = {
   fastLane: {
+    name: 'SL1 is the fast lane',
+    desc: 'A small stream of one-time passcodes on Service Level 1 goes straight through, while a large marketing blast on Service Level 3 backs up. Runs on Short Code, Alphanumeric and Long Code (Int) at once.',
     label: 'Fast lane: low-volume SL1 vs high-volume SL3, all sender types',
     ts: 'weighted', mt: 'none',
     subaccounts: [
@@ -76,6 +82,8 @@ const PRESETS = {
     ],
   },
   fastTier: {
+    name: 'Tier 1 is the fast tier',
+    desc: 'A Tier 1 customer sending a little gets through right away, while a Tier 3 customer sending a lot waits in line. Same idea as the fast lane, by Multi-Tenancy tier instead of Service Level.',
     label: 'Fast tier: low-volume Tier 1 vs high-volume Tier 3, all sender types',
     ts: 'none', mt: 'weighted',
     subaccounts: [
@@ -95,26 +103,35 @@ const PRESETS = {
     ],
   },
   fastBoth: {
-    label: 'Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, all sender types',
+    name: 'Fastest queue vs slowest queue',
+    desc: 'Tier 1 sending on Service Level 1 is the fastest queue and barely waits. Tier 3 sending on Service Level 3 is the slowest and backs up. The US runs at high volume the whole time, while the UK starts later at lower volume, in its own separate queues.',
+    label: 'Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, US and UK',
     ts: 'weighted', mt: 'weighted',
+    countries: ['US', 'GB'],
     subaccounts: [
-      { name: 'Bank', tier: 0, senderTypes: ['shortcode', 'alpha', 'longcode'] },
-      { name: 'Retailer', tier: 1, senderTypes: ['shortcode', 'alpha', 'longcode'] },
-      { name: 'Promo Co', tier: 2, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode', 'alpha', 'longcode', 'tollfree'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode', 'alpha', 'longcode', 'tollfree'] },
+      { name: 'Promo Co', tier: 2, senderTypes: ['shortcode', 'alpha', 'longcode', 'tollfree'] },
     ],
     streams: [
       // Tier 1 on SL1 is the fastest queue and sends little; Tier 3 on SL3 is the slowest and floods.
-      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 15 },
-      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 10, start: 0, duration: 15 },
-      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 15 },
-      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 150, start: 0, duration: 15 },
-      { sub: 0, senderType: 'alpha', intent: 'security', rate: 8, start: 0, duration: 15 },
-      { sub: 2, senderType: 'alpha', intent: 'announcements', rate: 60, start: 0, duration: 15 },
-      { sub: 0, senderType: 'longcode', intent: 'fraud', rate: 6, start: 0, duration: 15 },
-      { sub: 2, senderType: 'longcode', intent: 'polling', rate: 40, start: 0, duration: 15 },
+      // US: starts immediately and runs the whole time at high volume.
+      { sub: 0, country: 'US', senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 15 },
+      { sub: 1, country: 'US', senderType: 'shortcode', intent: 'notifications', rate: 10, start: 0, duration: 15 },
+      { sub: 1, country: 'US', senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 15 },
+      { sub: 2, country: 'US', senderType: 'shortcode', intent: 'marketing', rate: 160, start: 0, duration: 15 },
+      { sub: 0, country: 'US', senderType: 'tollfree', intent: 'otp', rate: 6, start: 0, duration: 15 },
+      { sub: 2, country: 'US', senderType: 'tollfree', intent: 'marketing', rate: 45, start: 0, duration: 15 },
+      // UK: starts later and runs shorter, at a lower volume.
+      { sub: 0, country: 'GB', senderType: 'alpha', intent: 'security', rate: 6, start: 5, duration: 8 },
+      { sub: 2, country: 'GB', senderType: 'alpha', intent: 'announcements', rate: 45, start: 5, duration: 8 },
+      { sub: 0, country: 'GB', senderType: 'longcode', intent: 'fraud', rate: 4, start: 7, duration: 6 },
+      { sub: 2, country: 'GB', senderType: 'longcode', intent: 'polling', rate: 28, start: 7, duration: 6 },
     ],
   },
   blast: {
+    name: 'No prioritization: OTPs stuck behind marketing',
+    desc: 'With Traffic Shaping and Multi-Tenancy off, everything shares one first-in, first-out queue. An OTP burst gets stuck behind a large marketing blast.',
     label: 'Marketing blast + OTP burst',
     subaccounts: [
       { name: 'Bank Alerts', tier: 0, senderTypes: ['shortcode', 'longcode'] },
@@ -130,6 +147,8 @@ const PRESETS = {
     ],
   },
   neighbor: {
+    name: 'No Multi-Tenancy: a noisy neighbor',
+    desc: "One customer floods Long Code (Int) with announcements. Without Multi-Tenancy, the other customers' notifications and deliveries wait behind it.",
     label: 'Noisy neighbor subaccount',
     subaccounts: [
       { name: 'Tenant A', tier: 0, senderTypes: ['longcode'] },
@@ -143,21 +162,35 @@ const PRESETS = {
     ],
   },
   mixed: {
-    label: 'Mixed sender types',
+    name: 'Several countries at once',
+    desc: "Traffic to the US, Canada and the UK at the same time, on several sender types. Each country has its own queues and throughput and a different traffic pattern: heavy and sustained in the US, two short bursts in Canada, a gradual ramp-up in the UK. A backlog in one country never slows the others.",
+    label: 'Several countries and sender types: US, Canada and UK',
+    ts: 'weighted', mt: 'weighted',
+    countries: ['US', 'CA', 'GB'],
     subaccounts: [
-      { name: 'Auth Service', tier: 0, senderTypes: ['shortcode', 'alpha'] },
-      { name: 'Logistics', tier: 1, senderTypes: ['alpha', 'longcode'] },
-      { name: 'Growth', tier: 2, senderTypes: ['shortcode'] },
+      { name: 'Auth Service', tier: 0, senderTypes: ['shortcode', 'alpha', 'tollfree'] },
+      { name: 'Logistics', tier: 1, senderTypes: ['alpha', 'longcode', 'tollfree'] },
+      { name: 'Growth', tier: 2, senderTypes: ['shortcode', 'tollfree'] },
     ],
     streams: [
-      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 250, start: 0, duration: 12 },
-      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 50, start: 3, duration: 8 },
-      { sub: 1, senderType: 'alpha', intent: 'delivery', rate: 60, start: 0, duration: 12 },
-      { sub: 0, senderType: 'alpha', intent: 'security', rate: 20, start: 4, duration: 6 },
-      { sub: 1, senderType: 'longcode', intent: 'delivery', rate: 30, start: 0, duration: 10 },
+      // US: heavy and sustained. A big marketing blast for the whole run, an OTP burst and steady toll-free deliveries.
+      { sub: 2, country: 'US', senderType: 'shortcode', intent: 'marketing', rate: 260, start: 0, duration: 14 },
+      { sub: 0, country: 'US', senderType: 'shortcode', intent: 'otp', rate: 50, start: 3, duration: 8 },
+      { sub: 1, country: 'US', senderType: 'tollfree', intent: 'delivery', rate: 32, start: 0, duration: 14 },
+      // Canada: two short toll-free bursts with quiet time in between, plus a small OTP stream.
+      { sub: 2, country: 'CA', senderType: 'tollfree', intent: 'announcements', rate: 90, start: 0, duration: 3 },
+      { sub: 2, country: 'CA', senderType: 'tollfree', intent: 'announcements', rate: 90, start: 9, duration: 3 },
+      { sub: 0, country: 'CA', senderType: 'tollfree', intent: 'otp', rate: 22, start: 1, duration: 10 },
+      // UK: a staggered ramp-up. Traffic steps up over time and finishes later than the others.
+      { sub: 1, country: 'GB', senderType: 'alpha', intent: 'delivery', rate: 25, start: 0, duration: 18 },
+      { sub: 1, country: 'GB', senderType: 'alpha', intent: 'delivery', rate: 35, start: 6, duration: 8 },
+      { sub: 0, country: 'GB', senderType: 'alpha', intent: 'security', rate: 26, start: 4, duration: 6 },
+      { sub: 1, country: 'GB', senderType: 'longcode', intent: 'delivery', rate: 30, start: 8, duration: 10 },
     ],
   },
   grid9: {
+    name: 'Nine queues: steady split',
+    desc: 'Three customer tiers each send on all three Service Levels, and every queue stays backed up. Shows how throughput is divided when everything is busy.',
     label: '9 queues: 3 tiers × 3 Service Levels (steady)',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
@@ -178,6 +211,8 @@ const PRESETS = {
     ],
   },
   grid9waves: {
+    name: 'Nine queues: traffic in waves',
+    desc: 'Service Levels start and stop in waves. Watch throughput shift to the queues that still have messages as others go quiet.',
     label: '9 queues: tiers and levels starting and stopping in waves',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
@@ -201,6 +236,8 @@ const PRESETS = {
     ],
   },
   sharedTiers: {
+    name: 'Customers sharing a tier',
+    desc: "Two customers share each of Tiers 1 and 2. Customers in the same tier split that tier's throughput equally.",
     label: 'Shared tiers: 5 subaccounts, 2 per tier, all Service Levels',
     ts: 'weighted', mt: 'weighted',
     subaccounts: [
@@ -229,9 +266,12 @@ const PRESETS = {
     ],
   },
   carrierOutage: {
+    name: 'Carrier outage',
+    desc: "Carrier 2 goes down for eight seconds. Only Carrier 2's own queue backs up; the other carriers and Twilio's queues keep moving.",
     label: 'Carrier outage: Carrier 2 down 6–14 s, 9 queues',
     ts: 'weighted', mt: 'weighted',
-    carriers: { shortcode: [{}, { status: 'outage', from: 6, to: 14 }, {}] },
+    countries: ['US'],
+    carriers: { US: { shortcode: [{}, { status: 'outage', from: 6, to: 14 }, {}] } },
     subaccounts: [
       { name: 'Bank', tier: 0, senderTypes: ['shortcode'] },
       { name: 'Retailer', tier: 1, senderTypes: ['shortcode'] },
@@ -250,6 +290,8 @@ const PRESETS = {
     ],
   },
   evenGrid: {
+    name: 'Even Multi-Tenancy',
+    desc: 'Customers sending on the same Service Level split its throughput equally, however much each one sends.',
     label: 'Even Multi-Tenancy: 3 subaccounts × 3 Service Levels',
     ts: 'weighted', mt: 'even',
     subaccounts: [
@@ -275,8 +317,10 @@ const state = {
   ts: { mode: 'none', weights: [50, 30, 20], mapping: defaultMapping() },
   mt: { mode: 'none', tiers: [{ weight: 60 }, { weight: 30 }, { weight: 10 }] },
   subaccounts: [],
-  senderTypes: defaultCarriers(),
+  countries: ['GB'],
+  countryCfg: countryCfgFor(['GB']),
   streams: [],
+  ccTab: 'GB',
   stTab: 'shortcode',
 };
 
@@ -296,7 +340,7 @@ function saveUserPresets(presets) {
 }
 
 function snapshot() {
-  return clone({ ts: state.ts, mt: state.mt, subaccounts: state.subaccounts, senderTypes: state.senderTypes, streams: state.streams });
+  return clone({ ts: state.ts, mt: state.mt, subaccounts: state.subaccounts, countries: state.countries, countryCfg: state.countryCfg, streams: state.streams });
 }
 
 function applyPreset(key) {
@@ -307,19 +351,29 @@ function applyPreset(key) {
     state.mt = { ...c.mt, tiers: Array.from({ length: TIER_COUNT }, (_, i) => c.mt.tiers[i] || { weight: 10 }) };
     state.subaccounts = c.subaccounts.slice(0, MAX_SUBACCOUNTS);
     c.streams = c.streams.filter(st => st.sub < MAX_SUBACCOUNTS);
-    state.senderTypes = withCarriers(c.senderTypes);
-    state.streams = c.streams.filter(st => state.senderTypes[st.senderType]);
+    if (!c.countries) {
+      // Saved before countries existed: one international country, plus the US for any toll-free.
+      c.countries = ['GB', ...(c.streams.some(st => st.senderType === 'tollfree') ? ['US'] : [])];
+      c.countryCfg = { GB: c.senderTypes || {}, US: c.senderTypes || {} };
+      for (const st of c.streams) st.country = st.senderType === 'tollfree' ? 'US' : 'GB';
+    }
+    state.countries = c.countries.filter(countryById);
+    state.countryCfg = Object.fromEntries(state.countries.map(cc => [cc, withDefaults(cc, c.countryCfg?.[cc])]));
+    state.streams = c.streams.filter(st => state.countries.includes(st.country) && allowedIn(st.country, st.senderType));
   } else {
     const p = PRESETS[key];
     state.ts = { mode: p.ts || 'none', weights: [50, 30, 20], mapping: defaultMapping() };
     state.mt = { mode: p.mt || 'none', tiers: [{ weight: 60 }, { weight: 30 }, { weight: 10 }] };
-    state.senderTypes = defaultCarriers();
-    for (const [stId, list] of Object.entries(p.carriers || {})) {
-      list.forEach((c, i) => Object.assign(state.senderTypes[stId].carriers[i], c));
+    state.countries = (p.countries || ['GB']).slice();
+    state.countryCfg = countryCfgFor(state.countries);
+    // preset carriers: { US: { shortcode: [{}, { status: 'outage', ... }, {}] } }
+    for (const [cc, byST] of Object.entries(p.carriers || {})) {
+      for (const [stId, list] of Object.entries(byST)) list.forEach((c, i) => Object.assign(state.countryCfg[cc][stId].carriers[i], c));
     }
     state.subaccounts = p.subaccounts.map(s => ({ ...s, senderTypes: s.senderTypes.slice() }));
-    state.streams = p.streams.map(s => ({ ...s }));
+    state.streams = p.streams.map(s => ({ country: state.countries[0], ...s }));
   }
+  state.ccTab = state.streams[0]?.country || state.countries[0];
   state.stTab = state.streams[0]?.senderType || 'shortcode';
 }
 
@@ -444,32 +498,69 @@ function renderMultiTenancy() {
             if (e.target.checked) sa.senderTypes.push(st.id);
             else if (sa.senderTypes.length > 1) {
               sa.senderTypes = sa.senderTypes.filter(x => x !== st.id);
-              const fallback = SENDER_TYPES.find(t => sa.senderTypes.includes(t.id)).id;
-              for (const str of state.streams) if (str.sub === i && str.senderType === st.id) str.senderType = fallback;
+              for (const str of state.streams) if (str.sub === i) fixSenderType(str);
             }
             renderMultiTenancy(); renderStreams(); renderCarriers();
           },
-        }), st.label, st.note ? el('span', { class: 'chip-note', title: `Long Code ${st.note}` }, '*') : null);
+        }), st.label);
     }));
     subs.append(el('div', { class: 'sub-block' }, row, chips));
   });
 }
 
+// Add or remove a country from the scenario. Removing one moves its streams to
+// the first remaining country, switching sender type if that country doesn't allow it.
+function setCountry(cc, on) {
+  if (on) {
+    if (!state.countries.includes(cc)) state.countries.push(cc);
+    state.countries.sort((a, b) => COUNTRIES.findIndex(c => c.id === a) - COUNTRIES.findIndex(c => c.id === b));
+    state.countryCfg[cc] ||= defaultCountryCfg(cc);
+  } else if (state.countries.length > 1) {
+    state.countries = state.countries.filter(x => x !== cc);
+    const to = state.countries[0];
+    for (const st of state.streams) if (st.country === cc) { st.country = to; fixSenderType(st); }
+    if (state.ccTab === cc) state.ccTab = to;
+  }
+  renderCarriers(); renderStreams(); renderResults();
+}
+
+// Keep a stream's sender type valid for its country and subaccount.
+function fixSenderType(st) {
+  const options = senderOptions(st);
+  if (!options.some(o => o.id === st.senderType)) st.senderType = (options[0] || SENDER_TYPES.find(t => allowedIn(st.country, t.id))).id;
+}
+const senderOptions = st => SENDER_TYPES.filter(t => allowedIn(st.country, t.id) && state.subaccounts[st.sub].senderTypes.includes(t.id));
+
 function renderCarriers() {
+  const usedCC = new Set(state.streams.map(s => s.country));
+  $('#country-picks').replaceChildren(...COUNTRIES.map(c => {
+    const on = state.countries.includes(c.id);
+    return el('label', { class: `chip${on ? ' on' : ''}`, title: c.name },
+      el('input', { type: 'checkbox', checked: on, disabled: on && state.countries.length <= 1, onchange: e => setCountry(c.id, e.target.checked) }),
+      `${c.id} · ${c.name}`);
+  }));
+  if (!state.countries.includes(state.ccTab)) state.ccTab = state.countries[0];
+  $('#cc-tabs').replaceChildren(...state.countries.map(cc => el('button', {
+    type: 'button', class: cc === state.ccTab ? 'on' : '', title: usedCC.has(cc) ? 'Has traffic' : '',
+    onclick: () => { state.ccTab = cc; renderCarriers(); },
+  }, `${cc} · ${countryById(cc).name}`, usedCC.has(cc) ? el('span', { class: 'dot' }) : null)));
+
   const tabs = $('#st-tabs');
   tabs.replaceChildren();
-  const used = new Set(state.streams.map(s => s.senderType));
-  for (const st of SENDER_TYPES) {
+  const used = new Set(state.streams.filter(s => s.country === state.ccTab).map(s => s.senderType));
+  const allowed = SENDER_TYPES.filter(st => allowedIn(state.ccTab, st.id));
+  if (!allowed.some(st => st.id === state.stTab)) state.stTab = allowed[0].id;
+  for (const st of allowed) {
     tabs.append(el('button', {
       type: 'button', class: st.id === state.stTab ? 'on' : '', title: used.has(st.id) ? 'Has traffic' : '',
       onclick: () => { state.stTab = st.id; renderCarriers(); },
     }, st.label, used.has(st.id) ? el('span', { class: 'dot' }) : null));
   }
 
-  const cfg = state.senderTypes[state.stTab];
+  const cfg = state.countryCfg[state.ccTab][state.stTab];
   const stDef = SENDER_TYPES.find(s => s.id === state.stTab);
   const label = stDef.label;
-  const field = el('label', {}, `${label} egress MPS`, numInput(cfg.mps, v => { cfg.mps = v; }, { min: 0, step: 1 }));
+  const field = el('label', {}, `${countryById(state.ccTab).name} · ${label} egress MPS`, numInput(cfg.mps, v => { cfg.mps = v; }, { min: 0, step: 1 }));
   const cards = cfg.carriers.map((c, i) => {
     const status = select([['healthy', '✓ Healthy'], ['degraded', '▲ Degraded'], ['outage', '✕ Outage']], c.status, v => { c.status = v; renderCarriers(); });
     const card = el('div', { class: `carrier-card ${c.status}` },
@@ -487,7 +578,7 @@ function renderCarriers() {
     return card;
   });
   $('#carriers').replaceChildren(field,
-    stDef.note ? el('p', { class: 'hint st-note' }, `${label} ${stDef.note}. US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy.`) : null,
+    stDef.note ? el('p', { class: 'hint st-note' }, stDef.note) : null,
     el('p', { class: 'hint' }, 'Each carrier has its own queue, drained at the carrier\'s own rate. The customer\'s MPS, Traffic Shaping and Multi-Tenancy don\'t change carrier rates. A degraded carrier (slowed) or an outage (stopped) only backs up that carrier\'s queue; the other carriers and the Service Level / tier queues keep moving.'),
     ...cards);
 }
@@ -503,12 +594,16 @@ function renderStreams() {
     box.append(el('div', { class: 'stream' },
       el('button', { type: 'button', class: 'icon-btn x', title: 'Remove stream', onclick: () => { state.streams.splice(i, 1); renderStreams(); renderCarriers(); } }, '×'),
       el('label', {}, 'Subaccount', select(state.subaccounts.map((sa, si) => [si, `${String.fromCharCode(65 + si)} · ${sa.name}`]), s.sub, v => {
-        s.sub = +v;
-        const allowed = state.subaccounts[s.sub].senderTypes;
-        if (!allowed.includes(s.senderType)) s.senderType = SENDER_TYPES.find(t => allowed.includes(t.id)).id;
+        s.sub = +v; fixSenderType(s);
         renderStreams(); renderCarriers();
       })),
-      el('label', {}, 'Sender type', select(SENDER_TYPES.filter(st => state.subaccounts[s.sub].senderTypes.includes(st.id)).map(st => [st.id, st.note ? `${st.label} (${st.note})` : st.label]), s.senderType, v => { s.senderType = v; state.stTab = v; renderCarriers(); })),
+      el('label', {}, 'Country', select(state.countries.map(cc => [cc, `${cc} · ${countryById(cc).name}`]), s.country, v => {
+        s.country = v; fixSenderType(s); state.ccTab = v;
+        renderStreams(); renderCarriers();
+      })),
+      el('label', {}, 'Sender type', senderOptions(s).length
+        ? select(senderOptions(s).map(st => [st.id, st.label]), s.senderType, v => { s.senderType = v; state.ccTab = s.country; state.stTab = v; renderCarriers(); })
+        : el('span', { class: 'stream-warn' }, `This subaccount has no sender type allowed in ${countryById(s.country).name}.`)),
       el('label', {}, 'MessageIntent', select(INTENTS.map(it => [it.id, it.label || it.id]), s.intent, v => { s.intent = v; renderStreams(); })),
       el('label', {}, 'Rate (msg/s)', numInput(s.rate, v => { s.rate = v; }, { min: 0 })),
       el('label', {}, 'Start (s)', numInput(s.start, v => { s.start = v; }, { min: 0, step: 0.5 })),
@@ -518,6 +613,7 @@ function renderStreams() {
 }
 
 function renderAll() {
+  if ($('#scenario-cards')) renderScenarioCards();
   renderPresetSelect();
   renderTrafficShaping();
   renderMultiTenancy();
@@ -530,11 +626,52 @@ function renderLegend() {
   const items = [1, 2, 3].map(sl => el('span', { class: 'item' },
     el('span', { class: 'swatch', style: `background: var(--series-${sl})` }),
     `${SL_SHAPES[sl]} SL ${sl}: ${INTENTS.filter(i => !i.fixed && state.ts.mapping[i.id] === sl).map(i => i.id).join(', ') || '–'}${sl === 3 ? ', (none)' : ''}`));
-  $('#legend').replaceChildren(...items, el('span', { class: 'sep' }),
-    el('span', { class: 'item' }, 'Lane = queue · head of queue on the right · dot = message, colored by priority · in = messages arriving per second, out = MPS leaving the queue, alloc = the most MPS the queue could reach right now'));
+  const explain = isSimple()
+    ? 'Each lane is a queue, and each dot is a waiting message. in = messages arriving per second, out = messages leaving per second.'
+    : 'Lane = queue · head of queue on the right · dot = message, colored by priority · in = messages arriving per second, out = MPS leaving the queue, alloc = the most MPS the queue could reach right now';
+  $('#legend').replaceChildren(...items, el('span', { class: 'sep' }), el('span', { class: 'item' }, explain));
 }
 
 $('#preset').addEventListener('change', e => { applyPreset(e.target.value); renderAll(); renderResults(); });
+
+// ---------------------------------------------------------------- simple / advanced mode
+
+const UI_MODE_KEY = 'toe-sim-ui-mode';
+const isSimple = () => !$('#advanced-toggle').checked;
+
+const isMultiCountry = p => (p.countries || ['GB']).length > 1;
+
+function renderScenarioCards() {
+  // Simple mode lists single-country scenarios; multi-country ones are in advanced mode.
+  $('#scenario-cards').replaceChildren(...Object.entries(PRESETS).filter(([, p]) => !isMultiCountry(p)).map(([key, p]) => el('button', {
+    type: 'button', class: `scenario-card${state.preset === key ? ' on' : ''}`, 'aria-pressed': state.preset === key,
+    onclick: () => {
+      if (sim) $('#btn-reset').click();
+      applyPreset(key);
+      renderAll(); renderResults();
+    },
+  }, el('b', {}, p.name), el('span', {}, p.desc))));
+}
+
+function applyUiMode() {
+  $('.app').classList.toggle('simple', isSimple());
+  renderLegend();
+  renderScenarioCards();
+  hideTip();
+  computeLayout(); draw(0);
+  renderDepthChart(); renderLatency();
+}
+
+$('#advanced-toggle').addEventListener('change', () => {
+  localStorage.setItem(UI_MODE_KEY, isSimple() ? 'simple' : 'advanced');
+  // Simple mode only lists single-country built-ins; fall back to the default scenario.
+  if (isSimple() && (isUserPreset(state.preset) || isMultiCountry(PRESETS[state.preset]))) {
+    if (sim) $('#btn-reset').click();
+    applyPreset('blast');
+    renderAll(); renderResults();
+  }
+  applyUiMode();
+});
 $('#preset-save').addEventListener('click', () => {
   const label = prompt('Name for this preset:', isUserPreset(state.preset) ? `${loadUserPresets()[state.preset].label} copy` : '')?.trim();
   if (!label) return;
@@ -578,9 +715,9 @@ $('#add-sub').addEventListener('click', () => {
   renderMultiTenancy(); renderStreams();
 });
 $('#add-stream').addEventListener('click', () => {
-  const allowed = state.subaccounts[0].senderTypes;
-  const senderType = allowed.includes(state.stTab) ? state.stTab : allowed[0];
-  state.streams.push({ sub: 0, senderType, intent: 'otp', rate: 20, start: 0, duration: 10 });
+  const st = { sub: 0, country: state.ccTab, senderType: state.stTab, intent: 'otp', rate: 20, start: 0, duration: 10 };
+  fixSenderType(st);
+  state.streams.push(st);
   renderStreams(); renderCarriers();
 });
 
@@ -597,8 +734,9 @@ function buildConfig() {
   return {
     ts: { enabled: state.ts.mode === 'weighted', weights: state.ts.weights.slice(), mapping: { ...state.ts.mapping } },
     mt: { mode: state.mt.mode, tiers: state.mt.tiers.map(t => ({ weight: t.weight })) },
-    subaccounts: state.subaccounts.map(s => ({ ...s, streams: state.streams.filter(st => state.subaccounts[st.sub] === s) })),
-    senderTypes: JSON.parse(JSON.stringify(state.senderTypes)),
+    subaccounts: state.subaccounts.map(s => ({ ...s, streams: state.streams.filter(st => state.subaccounts[st.sub] === s && senderOptions(st).some(o => o.id === st.senderType)) })),
+    countries: state.countries.slice(),
+    countryCfg: clone(state.countryCfg),
   };
 }
 
@@ -665,6 +803,12 @@ function frame(now) {
   if (sim.done) {
     if (!sim.finished) {
       sim.finished = true;
+      // Nothing is arriving or leaving any more; clear the last tick's live rates.
+      for (const cq of sim.queues) {
+        cq.inNow = 0; cq.outNow = 0;
+        for (const g of cq.groups) for (const tier of g.tiers) for (const t of tier.tenants) { t.leaf.inNow = 0; t.leaf.outNow = 0; t.leaf.allocMps = 0; }
+        for (const c of cq.carriers) { c.inNow = 0; c.outNow = 0; }
+      }
       sim.sample();
       renderDepthChart(); renderLatency();
     }
@@ -710,10 +854,13 @@ function computeLayout() {
   layout.rows = [];
   layout.carrierBox = new Map();
   if (!sim) { layout.height = 240; sizeCanvas(); return; }
-  const usedTypes = new Set(sim.streams.map(s => s.senderType));
+  const used = new Set(sim.streams.map(s => `${s.country}|${s.senderType}`));
   let y = 10;
+  let lastCC = null;
   for (const cq of sim.queues) {
-    if (!usedTypes.has(cq.stId)) continue;
+    if (!used.has(`${cq.cc}|${cq.stId}`)) continue;
+    if (lastCC && cq.cc !== lastCC) y += 14; // extra space between countries
+    lastCC = cq.cc;
     const lanes = [];
     for (const group of cq.groups) for (const tier of group.tiers) for (const t of tier.tenants) lanes.push({ group, tier, tenant: t, leaf: t.leaf });
     const nc = cq.carriers.length;
@@ -790,7 +937,7 @@ function draw(dtReal) {
     ctx.fillStyle = colors.text;
     ctx.font = '600 12px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    const title = `${st.label}${st.note ? ` (${st.note})` : ''} egress`;
+    const title = `${cq.cc} · ${st.label} egress`;
     ctx.fillText(title, 16, row.y + 14);
     const titleEnd = 16 + ctx.measureText(title).width;
     ctx.font = '12px system-ui, sans-serif';
@@ -841,7 +988,9 @@ function draw(dtReal) {
 
       // live rate for this lane
       ctx.fillStyle = colors.text2;
-      ctx.fillText(`in ${fmt(lane.leaf.inNow, 1)} · out ${fmt(lane.leaf.outNow, 1)} · alloc ${fmt(lane.leaf.allocMps, 1)}`, x1 + 10, ly);
+      ctx.fillText(isSimple()
+        ? `in ${fmt(lane.leaf.inNow, 1)} · out ${fmt(lane.leaf.outNow, 1)} MPS`
+        : `in ${fmt(lane.leaf.inNow, 1)} · out ${fmt(lane.leaf.outNow, 1)} · alloc ${fmt(lane.leaf.allocMps, 1)}`, x1 + 10, ly);
       layout.hits.push({ x: 6, y: ly - LANE_H / 2, w: x1 + 180, h: LANE_H, kind: 'lane', cq, lane });
     });
 
@@ -924,12 +1073,12 @@ function showTip(e, title, rows) {
 const hideTip = () => { tip.hidden = true; };
 
 canvas.addEventListener('mousemove', e => {
-  if (!sim) return hideTip();
+  if (!sim || isSimple()) return hideTip();
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left; const y = e.clientY - rect.top;
   const hit = layout.hits.slice().reverse().find(h => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h);
   if (!hit) return hideTip();
-  const stLabel = SENDER_TYPES.find(s => s.id === hit.cq.stId).label;
+  const stLabel = `${countryById(hit.cq.cc).name} · ${SENDER_TYPES.find(s => s.id === hit.cq.stId).label}`;
   if (hit.kind === 'lane') {
     const q = hit.lane.leaf.q;
     const oldest = q.length ? sim.t - q.at(0).t0 : 0;
@@ -1003,25 +1152,53 @@ function niceTicks(max, count = 4) {
 // Line charts of messages waiting over time. Each chart only populates when its
 // feature actually splits throughput; otherwise it explains why it's empty.
 
-const CHARTS = {
-  sl: {
-    box: $('#depth-chart'), aria: 'Messages waiting in queue over time, by Service Level',
-    on: cfg => cfg.ts.enabled,
-    off: 'Traffic Shaping is set to None, so Service Levels don\'t affect throughput. Set it to Weighted to see this chart.',
-    series: () => [0, 1, 2].map(i => ({ color: `var(--series-${i + 1})`, label: `SL ${i + 1}`, tip: `${SL_SHAPES[i + 1]} SL ${i + 1}`, value: d => d.q[i] })),
-  },
-  mt: {
-    box: $('#tier-chart'),
-    on: cfg => cfg.mt.mode !== 'none',
-    off: 'Multi-Tenancy is set to None, so subaccounts share one queue per Service Level. Set it to Even or Weighted to see this chart.',
-    aria: 'Messages waiting in queue over time, by Multi-Tenancy tier or subaccount',
-    series: cfg => (cfg.mt.mode === 'weighted'
-      ? [0, 1, 2].map(i => ({ color: `var(--tier-${i + 1})`, label: `Tier ${i + 1}`, tip: `Tier ${i + 1}`, value: d => d.tier[i] }))
-      : cfg.subaccounts.slice(0, MAX_SUBACCOUNTS).map((sa, i) => ({
-        color: SUB_COLORS[i], dash: SUB_DASH[i], label: subLetter(i), tip: `${subLetter(i)} · ${sa.name}`, value: d => d.sub[i] ?? 0,
-      }))),
-  },
-};
+// Per-country chart definitions. Each reads that country's slice of the timeline.
+function makeCountryCharts(cc, slBox, mtBox) {
+  const at = d => d.c?.[cc] || { q: [0, 0, 0], tier: [0, 0, 0], sub: [] };
+  return [
+    {
+      box: slBox, aria: `${countryById(cc).name}: messages waiting in queue over time, by Service Level`,
+      on: cfg => cfg.ts.enabled,
+      off: 'Traffic Shaping is set to None, so Service Levels don\'t affect throughput. Set it to Weighted to see this chart.',
+      series: () => [0, 1, 2].map(i => ({ color: `var(--series-${i + 1})`, label: `SL ${i + 1}`, tip: `${SL_SHAPES[i + 1]} SL ${i + 1}`, value: d => at(d).q[i] })),
+    },
+    {
+      box: mtBox, aria: `${countryById(cc).name}: messages waiting in queue over time, by Multi-Tenancy tier or subaccount`,
+      on: cfg => cfg.mt.mode !== 'none',
+      off: 'Multi-Tenancy is set to None, so subaccounts share one queue per Service Level. Set it to Even or Weighted to see this chart.',
+      series: cfg => (cfg.mt.mode === 'weighted'
+        ? [0, 1, 2].map(i => ({ color: `var(--tier-${i + 1})`, label: `Tier ${i + 1}`, tip: `Tier ${i + 1}`, value: d => at(d).tier[i] }))
+        : cfg.subaccounts.slice(0, MAX_SUBACCOUNTS).map((sa, i) => ({
+          color: SUB_COLORS[i], dash: SUB_DASH[i], label: subLetter(i), tip: `${subLetter(i)} · ${sa.name}`, value: d => at(d).sub[i] ?? 0,
+        }))),
+    },
+  ];
+}
+
+// One card per country in the scenario: SL chart + table, MT chart + table.
+let countryCards = { key: '', cards: [] };
+function ensureCountryCards() {
+  const countries = activeCfg().countries;
+  const key = countries.join(',');
+  if (countryCards.key === key) return countryCards.cards;
+  const cards = countries.map(cc => {
+    const slBox = el('div', { class: 'chart' }), mtBox = el('div', { class: 'chart' });
+    const slTable = el('div', { class: 'country-table' }), mtTable = el('div', { class: 'country-table' });
+    const mtTitle = el('h3', { class: 'chart-title' }), mtTableTitle = el('h3', { class: 'table-title' });
+    const section = el('section', { class: 'card country-card' },
+      el('h2', {}, countryById(cc).name, el('span', { class: 'muted' }, ` · ${cc}`)),
+      el('div', { class: 'country-grid' },
+        el('div', {}, el('h3', { class: 'chart-title' }, 'Messages waiting in queue, by Service Level'), slBox,
+          el('h3', { class: 'table-title' }, 'Time spent in queue, by Service Level'), slTable),
+        el('div', {}, mtTitle, mtBox, mtTableTitle, mtTable)));
+    const charts = makeCountryCharts(cc, slBox, mtBox);
+    charts.forEach(attachChartHover);
+    return { cc, section, charts, slTable, mtTable, mtTitle, mtTableTitle };
+  });
+  $('#country-charts').replaceChildren(...cards.map(c => c.section));
+  countryCards = { key, cards };
+  return cards;
+}
 
 // Settings that apply to the current run, or to the next run if none is active.
 const activeCfg = () => (sim ? sim.cfg : buildConfig());
@@ -1031,9 +1208,11 @@ function renderResults() { if (!sim) { renderDepthChart(); renderLatency(); } }
 
 function renderDepthChart() {
   const even = activeCfg().mt.mode === 'even';
-  $('#mt-chart-title').textContent = `Messages waiting in queue, by ${even ? 'subaccount (Even Multi-Tenancy)' : 'Multi-Tenancy tier'}`;
-  $('#mt-table-title').textContent = `Time spent in queue, by ${even ? 'subaccount' : 'Multi-Tenancy tier'}`;
-  for (const c of Object.values(CHARTS)) renderLineChart(c);
+  for (const card of ensureCountryCards()) {
+    card.mtTitle.textContent = `Messages waiting in queue, by ${even ? 'subaccount (Even Multi-Tenancy)' : 'Multi-Tenancy tier'}`;
+    card.mtTableTitle.textContent = `Time spent in queue, by ${even ? 'subaccount' : 'Multi-Tenancy tier'}`;
+    for (const c of card.charts) renderLineChart(c);
+  }
 }
 
 function renderLineChart(c) {
@@ -1082,7 +1261,7 @@ function renderLineChart(c) {
   box.innerHTML = s;
 }
 
-for (const c of Object.values(CHARTS)) {
+function attachChartHover(c) {
   const hide = () => {
     const xh = c.box.querySelector('.xhair'); if (xh) xh.setAttribute('visibility', 'hidden');
     const d = c.box.querySelector('.xhair-dots'); if (d) d.innerHTML = '';
@@ -1111,8 +1290,7 @@ for (const c of Object.values(CHARTS)) {
 // ---------------------------------------------------------------- latency table
 
 function renderLatency() {
-  const box = $('#latency-table');
-  const mtBox = $('#tier-latency-table');
+  const cards = ensureCountryCards();
   const subBox = $('#sub-latency-table');
   const cfg = activeCfg();
   const tsOn = cfg.ts.enabled;
@@ -1122,17 +1300,22 @@ function renderLatency() {
   const offMt = '<p class="table-off">Not shown: Multi-Tenancy is set to None, so subaccounts share one queue per Service Level.</p>';
   if (!sim) {
     const wait = '<p class="hint">Results appear here while the simulation runs.</p>';
-    box.innerHTML = tsOn ? wait : offTs;
-    mtBox.innerHTML = mtMode !== 'none' ? wait : offMt;
+    for (const card of cards) {
+      card.slTable.innerHTML = tsOn ? wait : offTs;
+      card.mtTable.innerHTML = mtMode !== 'none' ? wait : offMt;
+    }
     subBox.innerHTML = '<p class="hint">Per-subaccount results appear here while the simulation runs.</p>';
     return;
   }
   const sum = sim.summary();
-  const allMax = Math.max(1e-6, ...(tsOn ? sum.bySL.map(r => r.p95) : []), ...(weighted ? sum.byTier.map(r => r.p95) : []), ...sum.bySub.map(r => r.p95));
+  // One bar scale across every country, so bars compare across cards.
+  const perCountry = Object.values(sum.byCountry);
+  const allMax = Math.max(1e-6, ...sum.bySub.map(r => r.p95),
+    ...perCountry.flatMap(c => [...(tsOn ? c.bySL.map(r => r.p95) : []), ...(weighted ? c.byTier.map(r => r.p95) : []), ...c.bySub.map(r => r.p95)]));
   const frac = v => Math.min(100, Math.round((v / allMax) * 100));
   const bar = v => `<span class="bar-cell"><span class="num">${fmt(v, 2)} s</span><span class="track"><i style="width:${frac(v)}%"></i></span></span>`;
   const cells = r => `<td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td>`;
-  const row = (label, r) => `<tr><td class="l">${label}</td>${cells(r)}</tr>`;
+  const row = (label, r) => `<tr><td class="l">${label}</td>${r.count ? cells(r) : '<td class="empty">–</td>'.repeat(5)}</tr>`;
   const swatch = color => `<span class="swatch" style="background:${color}"></span>`;
   const slLabel = sl => `${swatch(`var(--series-${sl})`)} ${SL_SHAPES[sl]} SL ${sl}`;
   const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
@@ -1142,13 +1325,18 @@ function renderLatency() {
     + '<thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
   const table = rows => `${head}${rows.join('')}</tbody></table>`;
 
-  box.innerHTML = tsOn ? table(sum.bySL.map((r, i) => row(slLabel(i + 1), r))) : offTs;
-  if (weighted) mtBox.innerHTML = table(sum.byTier.map((r, i) => row(tierLabel(i), r)));
-  else if (mtMode === 'even') mtBox.innerHTML = table(sum.bySub.map((r, i) => row(subLabel(i), r)));
-  else mtBox.innerHTML = offMt;
+  for (const card of cards) {
+    const c = sum.byCountry[card.cc];
+    if (!c) continue;
+    card.slTable.innerHTML = tsOn ? table(c.bySL.map((r, i) => row(slLabel(i + 1), r))) : offTs;
+    if (weighted) card.mtTable.innerHTML = table(c.byTier.map((r, i) => row(tierLabel(i), r)));
+    else if (mtMode === 'even') card.mtTable.innerHTML = table(c.bySub.map((r, i) => (r.count ? row(subLabel(i), r) : '')));
+    else card.mtTable.innerHTML = offMt;
+  }
 
-  // Full-width table: a row per subaccount and sender type; each Service Level is a column group.
-  const parts = ['subaccount', 'sender type', ...(weighted ? ['tier'] : []), ...(tsOn ? ['Service Level'] : [])];
+  // Full-width table: a row per subaccount, country and sender type; each Service Level is a column group.
+  const stRowLabel = r => `${r.cc} · ${SENDER_TYPES.find(st => st.id === r.stId).label}`;
+  const parts = ['subaccount', 'country and sender type', ...(weighted ? ['tier'] : []), ...(tsOn ? ['Service Level'] : [])];
   $('#sub-latency-title').textContent = `Time spent in queue by ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
   const order = sim.cfg.subaccounts.map((_, i) => i)
     .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
@@ -1158,7 +1346,7 @@ function renderLatency() {
     : '<td class="g-start empty">–</td><td class="empty">–</td><td class="empty">–</td>';
   const groupCols = '<col class="c-count"><col class="c-time"><col class="c-p95">';
   let t = `<table class="fixed sub-latency${weighted ? ' has-tier' : ''}"><colgroup><col class="c-sub"><col class="c-st">${weighted ? '<col class="c-tier">' : ''}${groupCols.repeat(groups.length)}</colgroup>`
-    + '<thead><tr><th rowspan="2" class="l">Subaccount</th><th rowspan="2" class="l">Sender type</th>';
+    + '<thead><tr><th rowspan="2" class="l">Subaccount</th><th rowspan="2" class="l">Country · sender type</th>';
   if (weighted) t += '<th rowspan="2" class="l">Tier</th>';
   t += groups.map(([label]) => `<th colspan="3" class="g-start g-head">${label}</th>`).join('') + '</tr><tr>';
   t += groups.map(() => '<th class="g-start" title="Messages delivered">Msgs</th><th>Avg</th><th>p95</th>').join('') + '</tr></thead><tbody>';
@@ -1167,9 +1355,9 @@ function renderLatency() {
     const sa = sim.cfg.subaccounts[i];
     const stRows = sum.bySubST[i];
     const rows = stRows.length > 1
-      ? [...stRows.map(r => ({ label: SENDER_TYPES.find(st => st.id === r.stId).label, all: r.all, sl: r.sl })), { label: 'Total', all: sum.bySub[i], sl: sum.bySubSL[i], total: true }]
+      ? [...stRows.map(r => ({ label: stRowLabel(r), all: r.all, sl: r.sl })), { label: 'Total', all: sum.bySub[i], sl: sum.bySubSL[i], total: true }]
       : stRows.length === 1
-        ? [{ label: SENDER_TYPES.find(st => st.id === stRows[0].stId).label, all: stRows[0].all, sl: stRows[0].sl }]
+        ? [{ label: stRowLabel(stRows[0]), all: stRows[0].all, sl: stRows[0].sl }]
         : [{ label: '–', all: sum.bySub[i], sl: sum.bySubSL[i] }];
     const tierBreak = weighted && lastTier !== null && sa.tier !== lastTier;
     lastTier = sa.tier;
@@ -1193,8 +1381,15 @@ function escapeHtml(s) {
 
 // ---------------------------------------------------------------- boot
 
+// Keep the left panel just below the pinned header + disclaimer, whatever their height.
+const syncTopHeight = () => document.documentElement.style.setProperty('--top-h', `${$('#sticky-top').offsetHeight}px`);
+new ResizeObserver(syncTopHeight).observe($('#sticky-top'));
+syncTopHeight();
+
 applyPreset(state.preset);
+$('#advanced-toggle').checked = localStorage.getItem(UI_MODE_KEY) === 'advanced';
 renderAll();
+applyUiMode();
 computeLayout();
 renderStats();
 renderDepthChart();

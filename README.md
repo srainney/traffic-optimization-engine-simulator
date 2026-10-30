@@ -4,6 +4,8 @@ An interactive, in-browser simulator for Twilio's Traffic Optimization Engine. I
 
 **Live demo:** https://twilio-throughput-simulator-8381-dev.twil.io/index.html
 
+> **Throughput is not guaranteed.** This is a simulation of a perfect state and is not indicative of real-world performance. The app shows this notice in a yellow bar that stays at the top of the page.
+>
 > This is an educational model, not Twilio's production code. It follows the behavior described in Twilio's public docs and the weighting rules described below. Carrier names and default MPS values are placeholders.
 
 ## Contents
@@ -45,11 +47,23 @@ For example, with 100 MPS, Traffic Shaping at 50/30/20 and tiers at 60/30/10, if
 
 The model advances in 20 ms steps. Every step it decides how much each queue may send and delivers messages first-in, first-out within each queue.
 
+### Countries
+
+A scenario can include several destination countries (United States, Canada, United Kingdom, Germany, Brazil, India, Australia).
+
+- **Each country is independent.** It has its own queues, egress MPS per sender type, and carriers, so one country's traffic or backlog never affects another's. Traffic Shaping and Multi-Tenancy weights apply inside each country separately.
+- Each stream sends to one country. Its sender type must be available there:
+  - **Toll-Free (US)** is only available in the **US and Canada**. Each of the two still has its own toll-free throughput and queues.
+  - **Long Code (Int)** and **Alphanumeric** are only available **outside the US and Canada**.
+- The animation groups each country's rows (for example `US · Toll-Free (US) egress`), and the results show a card per country with its own charts and tables.
+
 ### Sender types and egress
 
-The simulator models three sender types: **Short Code** (default 100 MPS), **Long Code** (20 MPS) and **Alphanumeric** (30 MPS).
+The simulator models four sender types: **Short Code** (default 100 MPS), **Alphanumeric** (30 MPS), **Long Code (Int)** (20 MPS) and **Toll-Free (US)** (25 MPS).
 
-> **Long Code excludes US 10DLC.** US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy, so the Long Code sender type here represents long codes outside US/Canada 10DLC. The app shows the same note.
+- **Long Code (Int)** is for international long codes. It excludes US 10DLC: US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy.
+- **Toll-Free (US)** is for US toll-free numbers, sending to US destinations only.
+- A subaccount can use both: for example, toll-free to the US and long code to the UK. Each stream's country decides which of the two it can use.
 
 - Each sender type has **one egress MPS**, the downstream total shared by all of its carriers. If Short Code is set to 100 MPS, Carrier 1, 2 and 3 *together* receive 100 MPS. Each carrier does not get 100.
 - Every sender type has three carriers, named **Carrier 1**, **Carrier 2** and **Carrier 3**. Messages are spread evenly across them as they leave the queue.
@@ -63,7 +77,7 @@ Each carrier has **its own queue**. A message that leaves a Service Level or tie
 - **A carrier problem stays with that carrier.** A degraded carrier or an outage only backs up that carrier's queue. The other carriers keep delivering, and the Service Level and tier queues keep sending at their usual rates.
 - When a carrier recovers, it clears its backlog at its normal rate.
 - Wait times include time spent in a carrier queue, and a run finishes only when every carrier queue is empty.
-- Sender types are independent. Traffic on Short Code never affects Long Code.
+- Sender types are independent. Traffic on Short Code never affects Long Code (Int) or Toll-Free (US).
 
 ### Traffic Shaping
 
@@ -147,6 +161,17 @@ Tier weights only change the split **within a Service Level**. If each subaccoun
 
 ## Using the simulator
 
+### Simple and advanced mode
+
+The app opens in **simple mode**, which is meant for walking someone through the scenarios:
+
+- The left panel lists every single-country built-in scenario as a card (multi-country scenarios are in advanced mode), with a descriptive name and a sentence or two on what it shows. Click a card to load it, then press **Start simulation**. Clicking another card resets and loads that one.
+- The animation shows each queue's ingress and egress (`in · out MPS`), plus the carrier queues.
+- The per-country charts and their Service Level and Multi-Tenancy wait-time tables are shown, so you can see the results of each scenario. The per-subaccount table is advanced-only.
+- Settings, saved presets, the stat tiles, the `alloc` readout and hover details on the animation are hidden.
+
+Check **Advanced mode** in the top bar to unlock everything below: all settings, saved presets, the stat tiles, the `alloc` readout and hover details. The choice is remembered in your browser.
+
 ### Controls (left panel)
 
 | Section | What you can set |
@@ -154,13 +179,14 @@ Tier weights only change the split **within a Service Level**. If each subaccoun
 | **Scenario** | Pick a built-in or saved preset. Save, update or delete your own (see [Presets](#presets)). |
 | **Traffic Shaping** | None or Weighted, the SL 1/2/3 weights (slider or number), and the `MessageIntent` → Service Level mapping. |
 | **Multi-Tenancy** | None, Even or Weighted, the three tier weights (Weighted only), and each subaccount's name, tier and sender types. Subaccounts can be added (up to **6**, the most the charts can show distinctly) or removed. |
-| **Carriers by sender type** | The egress MPS for Short Code, Alphanumeric and Long Code, plus each carrier's status (Healthy, Degraded or Outage) with an optional From / Until window in simulated seconds. |
-| **Traffic** | Message streams. Each stream has a subaccount, a sender type (limited to that subaccount's types), a `MessageIntent`, a rate in msg/s, a start time and a duration, in simulated seconds. |
+| **Countries, sender types and carriers** | Which countries the scenario includes, then per country the egress MPS for each sender type available there, plus each carrier's status (Healthy, Degraded or Outage) with an optional From / Until window in simulated seconds. |
+| **Traffic** | Message streams. Each stream has a subaccount, a destination country, a sender type (limited to what that country allows and the subaccount uses), a `MessageIntent`, a rate in msg/s, a start time and a duration, in simulated seconds. |
 
 The settings lock while a simulation runs. **Reset** unlocks them.
 
 ### Top bar
 
+- **Advanced mode** switches between simple and advanced mode.
 - **View source** opens this repository.
 - **Speed** runs the simulation at 0.25× to 10× real time.
 - **▶ Start / ❚❚ Pause / ▶ Resume / ▶ Run again** controls the run. **Reset** clears it.
@@ -199,18 +225,20 @@ Each chart's three colors stay distinct for the common forms of color blindness,
 ### Results
 
 - **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
-- **Two charts, side by side**, each with its wait-time table underneath (delivered count, average, p50, p95 and max wait, including time waiting at a carrier):
+- **A card per country**, each with two charts side by side and a wait-time table under each (delivered count, average, p50, p95 and max wait, including time waiting at a carrier):
   - **Messages waiting in queue, by Service Level** with **Time spent in queue, by Service Level**. Populates only when Traffic Shaping is **Weighted**.
   - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier** when Multi-Tenancy is **Weighted**. When it's **Even**, the same card shows **by subaccount** instead, one line and row per subaccount, because Even splits throughput equally between subaccounts. Tiers and subaccounts use their own colors so they aren't confused with Service Levels.
   - When a feature is set to None, its chart and table show a note instead of numbers, because that breakdown doesn't affect throughput. Hover a chart for exact values at any time.
-- **Time spent in queue by subaccount** is a full-width table below, with a row for each **sender type** a subaccount used, plus a **Total** row when it used more than one. Each row shows delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where nothing was sent). Subaccounts are listed by tier.
+- **Time spent in queue by subaccount** (advanced mode only) is a full-width table below, with a row for each **country and sender type** a subaccount used (for example `US · Toll-Free (US)`), plus a **Total** row when it used more than one. Each row shows delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where nothing was sent). Subaccounts are listed by tier.
 - Both tables have fixed column widths, so they don't shift as values grow during a run. The p95 bars sit on a fixed-width track. If the window is too narrow, the table scrolls sideways inside its card.
 
 ## Presets
 
 **Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). Each preset sets its own Traffic Shaping and Multi-Tenancy modes, shown in the table.
 
-The first three presets show that **SL 1 and Tier 1 are the faster queues**. Low volumes there pass straight through with little to no queueing, while high volumes on SL 3 or Tier 3 back up. Each spans Short Code, Alphanumeric and Long Code.
+Simple mode lists the single-country presets. The two multi-country presets are only in advanced mode.
+
+The first three presets show that **SL 1 and Tier 1 are the faster queues**. Low volumes there pass straight through with little to no queueing, while high volumes on SL 3 or Tier 3 back up. Each spans Short Code, Alphanumeric and Long Code (Int).
 
 Every other preset sends faster than the throughput each of its queues receives, so queues build up by default. The exception is the **waves** preset: some of its streams send below their share at times, to show unused throughput moving to the queues that still have messages waiting.
 
@@ -218,10 +246,10 @@ Every other preset sends faster than the throughput each of its queues receives,
 |---|---|---|
 | Fast lane: low-volume SL1 vs high-volume SL3, all sender types | Weighted / None | On every sender type, a small SL 1 stream sends well under its share and almost never waits (p95 about 0.1 s), while a large SL 3 stream backs up to hundreds or thousands of messages (p95 about 16 s). |
 | Fast tier: low-volume Tier 1 vs high-volume Tier 3, all sender types | None / Weighted | The same contrast by Multi-Tenancy tier: a Tier 1 subaccount sending little stays near zero, while a Tier 3 subaccount sending a lot backs up. |
-| Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, all sender types | Weighted / Weighted | Both features together: Tier 1 on SL 1 (the fastest queue) sends little and passes straight through, while Tier 3 on SL 3 (the slowest) floods and backs up. |
-| Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code. |
-| Noisy neighbor subaccount | None / None | One Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
-| Mixed sender types | None / None | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |
+| Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, US and UK *(advanced mode)* | Weighted / Weighted | Both features together, in two countries: Tier 1 on SL 1 (the fastest queue) sends little and passes straight through, while Tier 3 on SL 3 (the slowest) floods and backs up. The US runs at high volume the whole time; the UK starts later, runs shorter and sends less, in its own queues. |
+| Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code (Int). |
+| Noisy neighbor subaccount | None / None | One Long Code (Int) subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
+| Several countries and sender types: US, Canada and UK *(advanced mode)* | Weighted / Weighted | Each country has its own queues and a different traffic pattern: heavy and sustained in the US (Short Code and Toll-Free), two short Toll-Free bursts in Canada, and a gradual ramp-up in the UK (Alphanumeric and Long Code (Int)). A backlog in one country never slows the others. |
 | 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code at about 1.5× its share. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
 | 9 queues: tiers and levels starting and stopping in waves | Weighted / Weighted | SL 3 from every tier, then SL 2 joins (staggered by tier), then short SL 1 bursts, then everything winds down. It shows each level's share moving between tiers and levels as they start, stop and drain. |
 | Carrier outage: Carrier 2 down 6–14 s, 9 queues | Weighted / Weighted | Nine queues on Short Code. Carrier 2 has an outage from 6 to 14 s, so its queue backs up while Carriers 1 and 3 keep delivering and the Service Level / tier queues are unaffected. Once Carrier 2 recovers, it drains its backlog. |
