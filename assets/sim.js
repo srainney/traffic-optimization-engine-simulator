@@ -144,6 +144,7 @@ class Simulation {
     this.endOfTraffic = this.streams.reduce((m, s) => Math.max(m, s.start + s.duration), 0);
 
     this.queuedBySL = [0, 0, 0, 0];
+    this.queuedByTier = [0, 0, 0];
     this.latBySL = [[], [], [], []];
     this.latBySub = cfg.subaccounts.map(() => []);
     this.latByTier = [[], [], []];
@@ -209,6 +210,7 @@ class Simulation {
     leaf.tickIn++;
     cq.tickIn++;
     this.queuedBySL[sl]++;
+    this.queuedByTier[this.cfg.subaccounts[stream.sub].tier]++;
     this.sentBySub[stream.sub]++;
     if (this.onArrive) this.onArrive(m, cq, leaf);
   }
@@ -340,6 +342,7 @@ class Simulation {
   deliver(m, cq, c) {
     const wait = this.t - m.t0;
     this.queuedBySL[m.sl]--;
+    this.queuedByTier[this.cfg.subaccounts[m.sub].tier]--;
     this.inCarrier--;
     this.latBySL[m.sl].push(wait);
     this.latBySub[m.sub].push(wait);
@@ -369,7 +372,7 @@ class Simulation {
   }
 
   sample() {
-    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1) });
+    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1), tier: this.queuedByTier.slice() });
     this.nextSample += 0.25;
   }
 

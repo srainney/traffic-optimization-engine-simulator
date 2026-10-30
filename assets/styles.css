@@ -13,6 +13,9 @@
   --series-1:       #2a78d6; /* Service Level 1 */
   --series-2:       #eb6834; /* Service Level 2 */
   --series-3:       #1baf7a; /* Service Level 3 */
+  --tier-1:         #6250d6; /* Multi-Tenancy tier 1 */
+  --tier-2:         #e87ba4; /* tier 2 */
+  --tier-3:         #008300; /* tier 3 */
   --good:           #0ca30c;
   --warning:        #fab219;
   --critical:       #d03b3b;
@@ -33,6 +36,9 @@
     --series-1:       #3987e5;
     --series-2:       #d95926;
     --series-3:       #199e70;
+    --tier-1:         #9085e9;
+    --tier-2:         #d55181;
+    --tier-3:         #008300;
   }
 }
 
@@ -129,7 +135,7 @@ details summary { cursor: pointer; color: var(--text-secondary); margin-top: 10p
 #stage { display: block; }
 .stage-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); pointer-events: none; }
 
-.charts { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; align-items: start; }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
 .chart { position: relative; height: 240px; }
 .chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .chart text { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -214,3 +220,6 @@ table.sub-latency .bar-cell .track { width: 28px; }
 table.summary { min-width: 468px; }
 table.sub-latency { min-width: 922px; }
 table.sub-latency.has-tier { min-width: 1000px; }
+h3.table-title { font-size: 12px; margin: 14px 0 4px; color: var(--text-secondary); }
+.chart-off { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 24px; color: var(--text-secondary); font-size: 12px; border: 1px dashed var(--axis); border-radius: 8px; }
+.table-off { color: var(--text-secondary); font-size: 12px; padding: 8px 0; }

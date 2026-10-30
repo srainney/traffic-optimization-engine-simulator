@@ -180,11 +180,11 @@ All live readouts are recomputed every step, so you see a change in throughput a
 ### Results
 
 - **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
-- **Messages waiting in queue, by Service Level** is a line chart of backlog over time. Hover it for exact values.
-- **Time spent in queue** (next to the chart) shows delivered count, average, p50, p95 and max wait, including time waiting at a carrier:
-  - **By Service Level:** SL 1, 2 and 3.
-  - **By Multi-Tenancy tier:** Tier 1, 2 and 3 with their weights. Shown when Multi-Tenancy is Weighted.
-- **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount. It shows the subaccount's tier when Multi-Tenancy is Weighted, then delivered count, average and p95 for all its messages and, when Traffic Shaping is Weighted, for each Service Level (– where it sent nothing). Subaccounts are listed by tier.
+- **Two charts, side by side**, each with its wait-time table underneath (delivered count, average, p50, p95 and max wait, including time waiting at a carrier):
+  - **Messages waiting in queue, by Service Level** with **Time spent in queue, by Service Level**. Populates only when Traffic Shaping is **Weighted**.
+  - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier**. Populates only when Multi-Tenancy is **Weighted**. Tiers use their own colors (violet, magenta, green) so they aren't confused with Service Levels.
+  - When a feature isn't splitting throughput, its chart and table show a note instead of numbers, because those breakdowns don't affect anything. Hover a chart for exact values at any time.
+- **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount and its delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where a subaccount sent nothing). Subaccounts are listed by tier.
 - Both tables have fixed column widths, so they don't shift as values grow during a run. The p95 bars sit on a fixed-width track. If the window is too narrow, the table scrolls sideways inside its card.
 
 ## Presets

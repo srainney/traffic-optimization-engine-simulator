@@ -462,7 +462,7 @@ function renderLegend() {
     el('span', { class: 'item' }, 'Lane = queue · head of queue on the right · dot = message, colored by priority · in = messages arriving per second, out = MPS leaving the queue, alloc = the most MPS the queue could reach right now'));
 }
 
-$('#preset').addEventListener('change', e => { applyPreset(e.target.value); renderAll(); });
+$('#preset').addEventListener('change', e => { applyPreset(e.target.value); renderAll(); renderResults(); });
 $('#preset-save').addEventListener('click', () => {
   const label = prompt('Name for this preset:', isUserPreset(state.preset) ? `${loadUserPresets()[state.preset].label} copy` : '')?.trim();
   if (!label) return;
@@ -494,11 +494,11 @@ $('#preset-delete').addEventListener('click', () => {
 });
 $('#ts-mode').addEventListener('click', e => {
   const m = e.target.closest('button')?.dataset.mode; if (!m) return;
-  state.ts.mode = m; renderTrafficShaping(); renderStreams();
+  state.ts.mode = m; renderTrafficShaping(); renderStreams(); renderResults();
 });
 $('#mt-mode').addEventListener('click', e => {
   const m = e.target.closest('button')?.dataset.mode; if (!m) return;
-  state.mt.mode = m; renderMultiTenancy();
+  state.mt.mode = m; renderMultiTenancy(); renderResults();
 });
 $('#add-sub').addEventListener('click', () => {
   state.subaccounts.push({ name: `Subaccount ${state.subaccounts.length + 1}`, tier: TIER_COUNT - 1, senderTypes: ['shortcode'] });
@@ -927,22 +927,49 @@ function niceTicks(max, count = 4) {
   return ticks;
 }
 
-const depthBox = $('#depth-chart');
-let depthGeom = null;
+// Line charts of messages waiting over time. Each chart only populates when its
+// feature actually splits throughput; otherwise it explains why it's empty.
+const CHARTS = {
+  sl: {
+    box: $('#depth-chart'), key: 'q', aria: 'Messages waiting in queue over time, by Service Level',
+    on: cfg => cfg.ts.enabled,
+    off: 'Traffic Shaping is set to None, so Service Levels don\'t affect throughput. Set it to Weighted to see this chart.',
+    color: i => `var(--series-${i + 1})`, label: i => `SL ${i + 1}`, tip: i => `${SL_SHAPES[i + 1]} SL ${i + 1}`,
+  },
+  tier: {
+    box: $('#tier-chart'), key: 'tier', aria: 'Messages waiting in queue over time, by Multi-Tenancy tier',
+    on: cfg => cfg.mt.mode === 'weighted',
+    off: 'Multi-Tenancy is not set to Weighted, so tiers don\'t affect throughput. Set it to Weighted to see this chart.',
+    color: i => `var(--tier-${i + 1})`, label: i => `Tier ${i + 1}`, tip: i => `Tier ${i + 1}`,
+  },
+};
+
+// Settings that apply to the current run, or to the next run if none is active.
+const activeCfg = () => (sim ? sim.cfg : buildConfig());
+
+// Charts and tables follow the current modes even before a run starts.
+function renderResults() { if (!sim) { renderDepthChart(); renderLatency(); } }
 
 function renderDepthChart() {
-  const W = depthBox.clientWidth; const H = depthBox.clientHeight;
+  for (const c of Object.values(CHARTS)) renderLineChart(c);
+}
+
+function renderLineChart(c) {
+  const box = c.box;
+  if (!c.on(activeCfg())) { c.geom = null; box.innerHTML = `<div class="chart-off">${c.off}</div>`; return; }
+  const W = box.clientWidth; const H = box.clientHeight;
   const m = { l: 44, r: 52, t: 8, b: 24 };
   const data = sim ? sim.timeline : [];
+  const series = d => d[c.key];
   const tMax = Math.max(sim ? sim.endOfTraffic : 10, data.length ? data[data.length - 1].t : 0, 1);
-  const yMax = Math.max(1, ...data.map(d => Math.max(...d.q)));
+  const yMax = Math.max(1, ...data.map(d => Math.max(...series(d))));
   const yt = niceTicks(Math.max(yMax, 4));
   const xt = niceTicks(tMax, 6);
   const X = t => m.l + (t / xt[xt.length - 1]) * (W - m.l - m.r);
   const Y = v => H - m.b - (v / yt[yt.length - 1]) * (H - m.t - m.b);
-  depthGeom = { X, Y, m, W, H, data, xMax: xt[xt.length - 1] };
+  c.geom = { X, Y, m, W, H, data, xMax: xt[xt.length - 1] };
 
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Messages waiting in queue over time, by Service Level">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${c.aria}">`;
   for (const v of yt) {
     s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
     s += `<text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${fmtInt(v)}</text>`;
@@ -952,82 +979,89 @@ function renderDepthChart() {
 
   if (data.length > 1) {
     const ends = [];
-    for (let sl = 0; sl < 3; sl++) {
-      const pts = data.map(d => `${X(d.t).toFixed(1)},${Y(d.q[sl]).toFixed(1)}`).join(' ');
-      s += `<polyline points="${pts}" fill="none" stroke="var(--series-${sl + 1})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for (let i = 0; i < 3; i++) {
+      const pts = data.map(d => `${X(d.t).toFixed(1)},${Y(series(d)[i]).toFixed(1)}`).join(' ');
+      s += `<polyline points="${pts}" fill="none" stroke="${c.color(i)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
       const last = data[data.length - 1];
-      ends.push({ sl, y: Y(last.q[sl]), x: X(last.t) });
+      ends.push({ i, y: Y(series(last)[i]), x: X(last.t) });
     }
-    // direct labels at line ends, nudged apart to avoid collisions
-    ends.sort((a, b) => a.y - b.y);
-    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 12) ends[i].y = ends[i - 1].y + 12;
-    for (const e of ends) s += `<text class="series-label" x="${e.x + 6}" y="${e.y + 4}">SL ${e.sl + 1}</text>`;
+    // Direct labels at line ends: kept above the x-axis labels and nudged apart.
+    const floor = H - m.b - 4;
+    ends.sort((a, b) => b.y - a.y);
+    ends[0].y = Math.min(ends[0].y, floor);
+    for (let k = 1; k < ends.length; k++) if (ends[k - 1].y - ends[k].y < 12) ends[k].y = ends[k - 1].y - 12;
+    for (const e of ends) s += `<text class="series-label" x="${e.x + 6}" y="${e.y + 4}">${c.label(e.i)}</text>`;
   }
-  s += '<line id="xhair" y1="0" y2="0" stroke="var(--axis)" stroke-width="1" visibility="hidden"/>';
-  s += '<g id="xhair-dots"></g>';
-  s += `<rect x="${m.l}" y="${m.t}" width="${Math.max(0, W - m.l - m.r)}" height="${Math.max(0, H - m.t - m.b)}" fill="transparent" id="depth-hit"/>`;
+  s += '<line class="xhair" y1="0" y2="0" stroke="var(--axis)" stroke-width="1" visibility="hidden"/>';
+  s += '<g class="xhair-dots"></g>';
+  s += `<rect x="${m.l}" y="${m.t}" width="${Math.max(0, W - m.l - m.r)}" height="${Math.max(0, H - m.t - m.b)}" fill="transparent"/>`;
   s += '</svg>';
-  depthBox.innerHTML = s;
+  box.innerHTML = s;
 }
 
-depthBox.addEventListener('mousemove', e => {
-  const g = depthGeom;
-  if (!g || g.data.length < 2) return;
-  const rect = depthBox.getBoundingClientRect();
-  const px = e.clientX - rect.left;
-  if (px < g.m.l || px > g.W - g.m.r) { hideDepthHover(); return; }
-  const t = ((px - g.m.l) / (g.W - g.m.l - g.m.r)) * g.xMax;
-  let best = g.data[0];
-  for (const d of g.data) if (Math.abs(d.t - t) < Math.abs(best.t - t)) best = d;
-  const xh = depthBox.querySelector('#xhair');
-  xh.setAttribute('x1', g.X(best.t)); xh.setAttribute('x2', g.X(best.t));
-  xh.setAttribute('y1', g.m.t); xh.setAttribute('y2', g.H - g.m.b);
-  xh.setAttribute('visibility', 'visible');
-  depthBox.querySelector('#xhair-dots').innerHTML = best.q.map((v, i) =>
-    `<circle cx="${g.X(best.t)}" cy="${g.Y(v)}" r="4" fill="var(--series-${i + 1})" stroke="var(--surface-1)" stroke-width="2"/>`).join('');
-  showTip(e, `t = ${fmt(best.t, 2)} s`, best.q.map((v, i) => [`${SL_SHAPES[i + 1]} SL ${i + 1}`, fmtInt(v)]));
-});
-function hideDepthHover() {
-  const xh = depthBox.querySelector('#xhair'); if (xh) xh.setAttribute('visibility', 'hidden');
-  const d = depthBox.querySelector('#xhair-dots'); if (d) d.innerHTML = '';
-  hideTip();
+for (const c of Object.values(CHARTS)) {
+  const hide = () => {
+    const xh = c.box.querySelector('.xhair'); if (xh) xh.setAttribute('visibility', 'hidden');
+    const d = c.box.querySelector('.xhair-dots'); if (d) d.innerHTML = '';
+    hideTip();
+  };
+  c.box.addEventListener('mousemove', e => {
+    const g = c.geom;
+    if (!g || g.data.length < 2) return;
+    const rect = c.box.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    if (px < g.m.l || px > g.W - g.m.r) { hide(); return; }
+    const t = ((px - g.m.l) / (g.W - g.m.l - g.m.r)) * g.xMax;
+    let best = g.data[0];
+    for (const d of g.data) if (Math.abs(d.t - t) < Math.abs(best.t - t)) best = d;
+    const xh = c.box.querySelector('.xhair');
+    xh.setAttribute('x1', g.X(best.t)); xh.setAttribute('x2', g.X(best.t));
+    xh.setAttribute('y1', g.m.t); xh.setAttribute('y2', g.H - g.m.b);
+    xh.setAttribute('visibility', 'visible');
+    const vals = best[c.key];
+    c.box.querySelector('.xhair-dots').innerHTML = vals.map((v, i) =>
+      `<circle cx="${g.X(best.t)}" cy="${g.Y(v)}" r="4" fill="${c.color(i)}" stroke="var(--surface-1)" stroke-width="2"/>`).join('');
+    showTip(e, `t = ${fmt(best.t, 2)} s`, vals.map((v, i) => [c.tip(i), fmtInt(v)]));
+  });
+  c.box.addEventListener('mouseleave', hide);
 }
-depthBox.addEventListener('mouseleave', hideDepthHover);
 
 // ---------------------------------------------------------------- latency table
 
 function renderLatency() {
   const box = $('#latency-table');
+  const tierBox = $('#tier-latency-table');
   const subBox = $('#sub-latency-table');
+  const cfg = activeCfg();
+  const tsOn = cfg.ts.enabled;
+  const weighted = cfg.mt.mode === 'weighted';
+  const offTs = '<p class="table-off">Not shown: Traffic Shaping is set to None, so Service Levels don\'t affect throughput.</p>';
+  const offMt = '<p class="table-off">Not shown: Multi-Tenancy is not set to Weighted, so tiers don\'t affect throughput.</p>';
   if (!sim) {
-    box.innerHTML = '<p class="hint">Results appear here while the simulation runs.</p>';
+    const wait = '<p class="hint">Results appear here while the simulation runs.</p>';
+    box.innerHTML = tsOn ? wait : offTs;
+    tierBox.innerHTML = weighted ? wait : offMt;
     subBox.innerHTML = '<p class="hint">Per-subaccount results appear here while the simulation runs.</p>';
     return;
   }
   const sum = sim.summary();
-  const weighted = sim.cfg.mt.mode === 'weighted';
-  const tsOn = sim.cfg.ts.enabled;
-  const allMax = Math.max(1e-6, ...sum.bySL.map(r => r.p95), ...sum.byTier.map(r => r.p95), ...sum.bySub.map(r => r.p95));
+  const allMax = Math.max(1e-6, ...(tsOn ? sum.bySL.map(r => r.p95) : []), ...(weighted ? sum.byTier.map(r => r.p95) : []), ...sum.bySub.map(r => r.p95));
   const frac = v => Math.min(100, Math.round((v / allMax) * 100));
   const bar = v => `<span class="bar-cell"><span class="num">${fmt(v, 2)} s</span><span class="track"><i style="width:${frac(v)}%"></i></span></span>`;
   const cells = r => `<td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td>`;
   const row = (label, r) => `<tr><td>${label}</td>${cells(r)}</tr>`;
   const slLabel = sl => `<span class="swatch" style="background:var(--series-${sl})"></span> ${SL_SHAPES[sl]} SL ${sl}`;
+  const tierLabel = i => `<span class="swatch" style="background:var(--tier-${i + 1})"></span> Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`;
   const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
-
-  // Summary table: by Service Level, then by tier.
-  let h = '<table class="fixed summary"><colgroup><col class="c-label"><col class="c-count"><col class="c-time"><col class="c-time"><col class="c-p95"><col class="c-time"></colgroup>'
+  const head = '<table class="fixed summary"><colgroup><col class="c-label"><col class="c-count"><col class="c-time"><col class="c-time"><col class="c-p95"><col class="c-time"></colgroup>'
     + '<thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
-  h += '<tr class="group"><td colspan="6">By Service Level</td></tr>';
-  sum.bySL.forEach((r, i) => { h += row(slLabel(i + 1), r); });
-  if (weighted) {
-    h += '<tr class="group"><td colspan="6">By Multi-Tenancy tier</td></tr>';
-    sum.byTier.forEach((r, i) => { h += row(`Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`, r); });
-  }
-  box.innerHTML = `${h}</tbody></table>`;
+
+  box.innerHTML = tsOn ? head + sum.bySL.map((r, i) => row(slLabel(i + 1), r)).join('') + '</tbody></table>' : offTs;
+  tierBox.innerHTML = weighted ? head + sum.byTier.map((r, i) => row(tierLabel(i), r)).join('') + '</tbody></table>' : offMt;
 
   // Full-width table: one row per subaccount; each Service Level is a column group.
-  $('#sub-latency-title').textContent = `Time spent in queue by subaccount${weighted ? ', tier' : ''}${tsOn ? ' and Service Level' : ''}`;
+  const parts = ['subaccount', ...(weighted ? ['tier'] : []), ...(tsOn ? ['Service Level'] : [])];
+  $('#sub-latency-title').textContent = `Time spent in queue by ${parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join(' and ')}`;
   const order = sim.cfg.subaccounts.map((_, i) => i)
     .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
   const groups = [['All messages', null], ...(tsOn ? [1, 2, 3].map(sl => [slLabel(sl), sl]) : [])];
