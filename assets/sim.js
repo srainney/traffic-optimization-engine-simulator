@@ -31,13 +31,13 @@
 const SENDER_TYPES = [
   { id: 'shortcode', label: 'Short Code', defaultMps: 100 },
   { id: 'alpha', label: 'Alphanumeric', defaultMps: 30 },
-  { id: 'longcode', label: 'Long Code (Int)', note: 'International long codes, for countries outside the US and Canada. Excludes US 10DLC: US and Canada A2P 10DLC traffic isn\'t part of Traffic Shaping or Multi-Tenancy.', defaultMps: 20 },
+  { id: 'longcode', label: 'Local Long Code', note: 'Local long codes, for countries outside the US and Canada. Excludes US 10DLC: US and Canada A2P 10DLC traffic isn\'t part of Traffic Shaping or Multi-Tenancy.', defaultMps: 20 },
   { id: 'tollfree', label: 'Toll-Free (US)', note: 'Toll-free numbers, for the US and Canada only. Each country still has its own toll-free throughput and queues.', defaultMps: 25 },
 ];
 
 // Destination countries. Each country in a scenario has its own sender-type
 // queues, egress MPS and carriers; one country's traffic never affects another.
-// Toll-Free (US) is only available in the US and Canada; Long Code (Int) and
+// Toll-Free (US) is only available in the US and Canada; Local Long Code and
 // Alphanumeric only outside them.
 const COUNTRIES = [
   { id: 'US', name: 'United States', senderTypes: ['shortcode', 'tollfree'] },

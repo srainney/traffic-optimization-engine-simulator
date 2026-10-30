@@ -54,14 +54,14 @@ A scenario can include several destination countries (United States, Canada, Uni
 - **Each country is independent.** It has its own queues, egress MPS per sender type, and carriers, so one country's traffic or backlog never affects another's. Traffic Shaping and Multi-Tenancy weights apply inside each country separately.
 - Each stream sends to one country. Its sender type must be available there:
   - **Toll-Free (US)** is only available in the **US and Canada**. Each of the two still has its own toll-free throughput and queues.
-  - **Long Code (Int)** and **Alphanumeric** are only available **outside the US and Canada**.
+  - **Local Long Code** and **Alphanumeric** are only available **outside the US and Canada**.
 - The animation groups each country's rows (for example `US · Toll-Free (US) egress`), and the results show a card per country with its own charts and tables.
 
 ### Sender types and egress
 
-The simulator models four sender types: **Short Code** (default 100 MPS), **Alphanumeric** (30 MPS), **Long Code (Int)** (20 MPS) and **Toll-Free (US)** (25 MPS).
+The simulator models four sender types: **Short Code** (default 100 MPS), **Alphanumeric** (30 MPS), **Local Long Code** (20 MPS) and **Toll-Free (US)** (25 MPS).
 
-- **Long Code (Int)** is for international long codes. It excludes US 10DLC: US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy.
+- **Local Long Code** is for local long codes in countries outside the US and Canada. It excludes US 10DLC: US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy.
 - **Toll-Free (US)** is for US toll-free numbers, sending to US destinations only.
 - A subaccount can use both: for example, toll-free to the US and long code to the UK. Each stream's country decides which of the two it can use.
 
@@ -77,7 +77,7 @@ Each carrier has **its own queue**. A message that leaves a Service Level or tie
 - **A carrier problem stays with that carrier.** A degraded carrier or an outage only backs up that carrier's queue. The other carriers keep delivering, and the Service Level and tier queues keep sending at their usual rates.
 - When a carrier recovers, it clears its backlog at its normal rate.
 - Wait times include time spent in a carrier queue, and a run finishes only when every carrier queue is empty.
-- Sender types are independent. Traffic on Short Code never affects Long Code (Int) or Toll-Free (US).
+- Sender types are independent. Traffic on Short Code never affects Local Long Code or Toll-Free (US).
 
 ### Traffic Shaping
 
@@ -238,7 +238,7 @@ Each chart's three colors stay distinct for the common forms of color blindness,
 
 Simple mode lists the single-country presets. The two multi-country presets are only in advanced mode.
 
-The first three presets show that **SL 1 and Tier 1 are the faster queues**. Low volumes there pass straight through with little to no queueing, while high volumes on SL 3 or Tier 3 back up. Each spans Short Code, Alphanumeric and Long Code (Int).
+The first three presets show that **SL 1 and Tier 1 are the faster queues**. Low volumes there pass straight through with little to no queueing, while high volumes on SL 3 or Tier 3 back up. Each spans Short Code, Alphanumeric and Local Long Code.
 
 Every other preset sends faster than the throughput each of its queues receives, so queues build up by default. The exception is the **waves** preset: some of its streams send below their share at times, to show unused throughput moving to the queues that still have messages waiting.
 
@@ -247,9 +247,9 @@ Every other preset sends faster than the throughput each of its queues receives,
 | Fast lane: low-volume SL1 vs high-volume SL3, all sender types | Weighted / None | On every sender type, a small SL 1 stream sends well under its share and almost never waits (p95 about 0.1 s), while a large SL 3 stream backs up to hundreds or thousands of messages (p95 about 16 s). |
 | Fast tier: low-volume Tier 1 vs high-volume Tier 3, all sender types | None / Weighted | The same contrast by Multi-Tenancy tier: a Tier 1 subaccount sending little stays near zero, while a Tier 3 subaccount sending a lot backs up. |
 | Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, US and UK *(advanced mode)* | Weighted / Weighted | Both features together, in two countries: Tier 1 on SL 1 (the fastest queue) sends little and passes straight through, while Tier 3 on SL 3 (the slowest) floods and backs up. The US runs at high volume the whole time; the UK starts later, runs shorter and sends less, in its own queues. |
-| Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code (Int). |
-| Noisy neighbor subaccount | None / None | One Long Code (Int) subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
-| Several countries and sender types: US, Canada and UK *(advanced mode)* | Weighted / Weighted | Each country has its own queues and a different traffic pattern: heavy and sustained in the US (Short Code and Toll-Free), two short Toll-Free bursts in Canada, and a gradual ramp-up in the UK (Alphanumeric and Long Code (Int)). A backlog in one country never slows the others. |
+| Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Local Long Code. |
+| Noisy neighbor subaccount | None / None | One Local Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
+| Several countries and sender types: US, Canada and UK *(advanced mode)* | Weighted / Weighted | Each country has its own queues and a different traffic pattern: heavy and sustained in the US (Short Code and Toll-Free), two short Toll-Free bursts in Canada, and a gradual ramp-up in the UK (Alphanumeric and Local Long Code). A backlog in one country never slows the others. |
 | 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code at about 1.5× its share. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
 | 9 queues: tiers and levels starting and stopping in waves | Weighted / Weighted | SL 3 from every tier, then SL 2 joins (staggered by tier), then short SL 1 bursts, then everything winds down. It shows each level's share moving between tiers and levels as they start, stop and drain. |
 | Carrier outage: Carrier 2 down 6–14 s, 9 queues | Weighted / Weighted | Nine queues on Short Code. Carrier 2 has an outage from 6 to 14 s, so its queue backs up while Carriers 1 and 3 keep delivering and the Service Level / tier queues are unaffected. Once Carrier 2 recovers, it drains its backlog. |

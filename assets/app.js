@@ -62,7 +62,7 @@ function defaultMapping() {
 const PRESETS = {
   fastLane: {
     name: 'SL1 is the fast lane',
-    desc: 'A small stream of one-time passcodes on Service Level 1 goes straight through, while a large marketing blast on Service Level 3 backs up. Runs on Short Code, Alphanumeric and Long Code (Int) at once.',
+    desc: 'A small stream of one-time passcodes on Service Level 1 goes straight through, while a large marketing blast on Service Level 3 backs up. Runs on Short Code, Alphanumeric and Local Long Code at once.',
     label: 'Fast lane: low-volume SL1 vs high-volume SL3, all sender types',
     ts: 'weighted', mt: 'none',
     subaccounts: [
@@ -148,7 +148,7 @@ const PRESETS = {
   },
   neighbor: {
     name: 'No Multi-Tenancy: a noisy neighbor',
-    desc: "One customer floods Long Code (Int) with announcements. Without Multi-Tenancy, the other customers' notifications and deliveries wait behind it.",
+    desc: "One customer floods Local Long Code with announcements. Without Multi-Tenancy, the other customers' notifications and deliveries wait behind it.",
     label: 'Noisy neighbor subaccount',
     subaccounts: [
       { name: 'Tenant A', tier: 0, senderTypes: ['longcode'] },
