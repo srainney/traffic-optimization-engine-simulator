@@ -153,7 +153,7 @@ Tier weights only change the split **within a Service Level**. If each subaccoun
 |---|---|
 | **Scenario** | Pick a built-in or saved preset. Save, update or delete your own (see [Presets](#presets)). |
 | **Traffic Shaping** | None or Weighted, the SL 1/2/3 weights (slider or number), and the `MessageIntent` → Service Level mapping. |
-| **Multi-Tenancy** | None, Even or Weighted, the three tier weights (Weighted only), and each subaccount's name, tier and sender types. Subaccounts can be added or removed. |
+| **Multi-Tenancy** | None, Even or Weighted, the three tier weights (Weighted only), and each subaccount's name, tier and sender types. Subaccounts can be added (up to **6**, the most the charts can show distinctly) or removed. |
 | **Carriers by sender type** | The egress MPS for Short Code, Alphanumeric and Long Code, plus each carrier's status (Healthy, Degraded or Outage) with an optional From / Until window in simulated seconds. |
 | **Traffic** | Message streams. Each stream has a subaccount, a sender type (limited to that subaccount's types), a `MessageIntent`, a rate in msg/s, a start time and a duration, in simulated seconds. |
 
@@ -192,6 +192,8 @@ The app is always in dark mode. Service Levels and tiers use a colorblind-safe p
 | Tier 2 | Pink | `#CC79A7` |
 | Tier 3 | Yellow | `#F0E442` |
 
+With Even Multi-Tenancy the second chart plots subaccounts A–F in purple-blue, pink, yellow, orange, teal and a light neutral (`#E8E6E1`). Sky blue is left out there because it's too close to purple-blue in the same chart, and D, E and F are also dashed so no subaccount relies on color alone.
+
 Each chart's three colors stay distinct for the common forms of color blindness, and every series is also labeled, so color is never the only cue. Service Level dots also use shapes (● ■ ▲). Carrier status uses separate green / amber / red, each paired with an icon and label.
 
 ### Results
@@ -199,9 +201,9 @@ Each chart's three colors stay distinct for the common forms of color blindness,
 - **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
 - **Two charts, side by side**, each with its wait-time table underneath (delivered count, average, p50, p95 and max wait, including time waiting at a carrier):
   - **Messages waiting in queue, by Service Level** with **Time spent in queue, by Service Level**. Populates only when Traffic Shaping is **Weighted**.
-  - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier**. Populates only when Multi-Tenancy is **Weighted**. Tiers use their own colors (purple-blue, pink, yellow) so they aren't confused with Service Levels.
-  - When a feature isn't splitting throughput, its chart and table show a note instead of numbers, because those breakdowns don't affect anything. Hover a chart for exact values at any time.
-- **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount and its delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where a subaccount sent nothing). Subaccounts are listed by tier.
+  - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier** when Multi-Tenancy is **Weighted**. When it's **Even**, the same card shows **by subaccount** instead, one line and row per subaccount, because Even splits throughput equally between subaccounts. Tiers and subaccounts use their own colors so they aren't confused with Service Levels.
+  - When a feature is set to None, its chart and table show a note instead of numbers, because that breakdown doesn't affect throughput. Hover a chart for exact values at any time.
+- **Time spent in queue by subaccount** is a full-width table below, with a row for each **sender type** a subaccount used, plus a **Total** row when it used more than one. Each row shows delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where nothing was sent). Subaccounts are listed by tier.
 - Both tables have fixed column widths, so they don't shift as values grow during a run. The p95 bars sit on a fixed-width track. If the window is too narrow, the table scrolls sideways inside its card.
 
 ## Presets

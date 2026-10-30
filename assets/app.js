@@ -18,6 +18,14 @@ const SL_SHAPES = ['', '●', '■', '▲'];
 
 // ---------------------------------------------------------------- state
 
+// Even Multi-Tenancy plots one line per subaccount (up to 6). Sky blue is left
+// out because it's too close to purple-blue in one chart; F uses a light
+// neutral. D, E and F are also dashed so no subaccount relies on color alone.
+const SUB_COLORS = ['var(--tier-1)', 'var(--tier-2)', 'var(--tier-3)', 'var(--series-2)', 'var(--series-3)', 'var(--sub-6)'];
+const SUB_DASH = [null, null, null, '6 3', '2 3', '9 3 2 3'];
+const MAX_SUBACCOUNTS = SUB_COLORS.length;
+const subLetter = i => String.fromCharCode(65 + i);
+
 const defaultCarrier = () => ({ status: 'healthy', from: 0, to: null });
 
 function defaultCarriers() {
@@ -239,7 +247,8 @@ function applyPreset(key) {
     const c = clone(loadUserPresets()[key].config);
     state.ts = { ...c.ts, mapping: { ...defaultMapping(), ...c.ts.mapping } };
     state.mt = { ...c.mt, tiers: Array.from({ length: TIER_COUNT }, (_, i) => c.mt.tiers[i] || { weight: 10 }) };
-    state.subaccounts = c.subaccounts;
+    state.subaccounts = c.subaccounts.slice(0, MAX_SUBACCOUNTS);
+    c.streams = c.streams.filter(st => st.sub < MAX_SUBACCOUNTS);
     state.senderTypes = withCarriers(c.senderTypes);
     state.streams = c.streams.filter(st => state.senderTypes[st.senderType]);
   } else {
@@ -350,6 +359,9 @@ function renderMultiTenancy() {
 
   const subs = $('#subaccounts');
   subs.replaceChildren();
+  const full = state.subaccounts.length >= MAX_SUBACCOUNTS;
+  $('#add-sub').disabled = full;
+  $('#add-sub').textContent = full ? `Maximum of ${MAX_SUBACCOUNTS} subaccounts` : '+ Add subaccount';
   state.subaccounts.forEach((sa, i) => {
     const row = el('div', { class: `sub-row${weighted ? '' : ' no-tier'}` },
       el('span', { class: 'shape' }, String.fromCharCode(65 + i)),
@@ -503,6 +515,7 @@ $('#mt-mode').addEventListener('click', e => {
   state.mt.mode = m; renderMultiTenancy(); renderResults();
 });
 $('#add-sub').addEventListener('click', () => {
+  if (state.subaccounts.length >= MAX_SUBACCOUNTS) return;
   state.subaccounts.push({ name: `Subaccount ${state.subaccounts.length + 1}`, tier: TIER_COUNT - 1, senderTypes: ['shortcode'] });
   renderMultiTenancy(); renderStreams();
 });
@@ -931,18 +944,24 @@ function niceTicks(max, count = 4) {
 
 // Line charts of messages waiting over time. Each chart only populates when its
 // feature actually splits throughput; otherwise it explains why it's empty.
+
 const CHARTS = {
   sl: {
-    box: $('#depth-chart'), key: 'q', aria: 'Messages waiting in queue over time, by Service Level',
+    box: $('#depth-chart'), aria: 'Messages waiting in queue over time, by Service Level',
     on: cfg => cfg.ts.enabled,
     off: 'Traffic Shaping is set to None, so Service Levels don\'t affect throughput. Set it to Weighted to see this chart.',
-    color: i => `var(--series-${i + 1})`, label: i => `SL ${i + 1}`, tip: i => `${SL_SHAPES[i + 1]} SL ${i + 1}`,
+    series: () => [0, 1, 2].map(i => ({ color: `var(--series-${i + 1})`, label: `SL ${i + 1}`, tip: `${SL_SHAPES[i + 1]} SL ${i + 1}`, value: d => d.q[i] })),
   },
-  tier: {
-    box: $('#tier-chart'), key: 'tier', aria: 'Messages waiting in queue over time, by Multi-Tenancy tier',
-    on: cfg => cfg.mt.mode === 'weighted',
-    off: 'Multi-Tenancy is not set to Weighted, so tiers don\'t affect throughput. Set it to Weighted to see this chart.',
-    color: i => `var(--tier-${i + 1})`, label: i => `Tier ${i + 1}`, tip: i => `Tier ${i + 1}`,
+  mt: {
+    box: $('#tier-chart'),
+    on: cfg => cfg.mt.mode !== 'none',
+    off: 'Multi-Tenancy is set to None, so subaccounts share one queue per Service Level. Set it to Even or Weighted to see this chart.',
+    aria: 'Messages waiting in queue over time, by Multi-Tenancy tier or subaccount',
+    series: cfg => (cfg.mt.mode === 'weighted'
+      ? [0, 1, 2].map(i => ({ color: `var(--tier-${i + 1})`, label: `Tier ${i + 1}`, tip: `Tier ${i + 1}`, value: d => d.tier[i] }))
+      : cfg.subaccounts.slice(0, MAX_SUBACCOUNTS).map((sa, i) => ({
+        color: SUB_COLORS[i], dash: SUB_DASH[i], label: subLetter(i), tip: `${subLetter(i)} · ${sa.name}`, value: d => d.sub[i] ?? 0,
+      }))),
   },
 };
 
@@ -953,6 +972,9 @@ const activeCfg = () => (sim ? sim.cfg : buildConfig());
 function renderResults() { if (!sim) { renderDepthChart(); renderLatency(); } }
 
 function renderDepthChart() {
+  const even = activeCfg().mt.mode === 'even';
+  $('#mt-chart-title').textContent = `Messages waiting in queue, by ${even ? 'subaccount (Even Multi-Tenancy)' : 'Multi-Tenancy tier'}`;
+  $('#mt-table-title').textContent = `Time spent in queue, by ${even ? 'subaccount' : 'Multi-Tenancy tier'}`;
   for (const c of Object.values(CHARTS)) renderLineChart(c);
 }
 
@@ -962,14 +984,14 @@ function renderLineChart(c) {
   const W = box.clientWidth; const H = box.clientHeight;
   const m = { l: 44, r: 52, t: 8, b: 24 };
   const data = sim ? sim.timeline : [];
-  const series = d => d[c.key];
+  const list = c.series(activeCfg());
   const tMax = Math.max(sim ? sim.endOfTraffic : 10, data.length ? data[data.length - 1].t : 0, 1);
-  const yMax = Math.max(1, ...data.map(d => Math.max(...series(d))));
+  const yMax = Math.max(1, ...data.map(d => Math.max(...list.map(se => se.value(d)))));
   const yt = niceTicks(Math.max(yMax, 4));
   const xt = niceTicks(tMax, 6);
   const X = t => m.l + (t / xt[xt.length - 1]) * (W - m.l - m.r);
   const Y = v => H - m.b - (v / yt[yt.length - 1]) * (H - m.t - m.b);
-  c.geom = { X, Y, m, W, H, data, xMax: xt[xt.length - 1] };
+  c.geom = { X, Y, m, W, H, data, list, xMax: xt[xt.length - 1] };
 
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${c.aria}">`;
   for (const v of yt) {
@@ -981,18 +1003,19 @@ function renderLineChart(c) {
 
   if (data.length > 1) {
     const ends = [];
-    for (let i = 0; i < 3; i++) {
-      const pts = data.map(d => `${X(d.t).toFixed(1)},${Y(series(d)[i]).toFixed(1)}`).join(' ');
-      s += `<polyline points="${pts}" fill="none" stroke="${c.color(i)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    list.forEach((se, i) => {
+      const pts = data.map(d => `${X(d.t).toFixed(1)},${Y(se.value(d)).toFixed(1)}`).join(' ');
+      const dash = se.dash ? ` stroke-dasharray="${se.dash}"` : '';
+      s += `<polyline points="${pts}" fill="none" stroke="${se.color}" stroke-width="2"${dash} stroke-linejoin="round" stroke-linecap="round"/>`;
       const last = data[data.length - 1];
-      ends.push({ i, y: Y(series(last)[i]), x: X(last.t) });
-    }
+      ends.push({ i, y: Y(se.value(last)), x: X(last.t) });
+    });
     // Direct labels at line ends: kept above the x-axis labels and nudged apart.
     const floor = H - m.b - 4;
     ends.sort((a, b) => b.y - a.y);
     ends[0].y = Math.min(ends[0].y, floor);
     for (let k = 1; k < ends.length; k++) if (ends[k - 1].y - ends[k].y < 12) ends[k].y = ends[k - 1].y - 12;
-    for (const e of ends) s += `<text class="series-label" x="${e.x + 6}" y="${e.y + 4}">${c.label(e.i)}</text>`;
+    for (const e of ends) s += `<text class="series-label" x="${e.x + 6}" y="${e.y + 4}">${list[e.i].label}</text>`;
   }
   s += '<line class="xhair" y1="0" y2="0" stroke="var(--axis)" stroke-width="1" visibility="hidden"/>';
   s += '<g class="xhair-dots"></g>';
@@ -1020,10 +1043,9 @@ for (const c of Object.values(CHARTS)) {
     xh.setAttribute('x1', g.X(best.t)); xh.setAttribute('x2', g.X(best.t));
     xh.setAttribute('y1', g.m.t); xh.setAttribute('y2', g.H - g.m.b);
     xh.setAttribute('visibility', 'visible');
-    const vals = best[c.key];
-    c.box.querySelector('.xhair-dots').innerHTML = vals.map((v, i) =>
-      `<circle cx="${g.X(best.t)}" cy="${g.Y(v)}" r="4" fill="${c.color(i)}" stroke="var(--surface-1)" stroke-width="2"/>`).join('');
-    showTip(e, `t = ${fmt(best.t, 2)} s`, vals.map((v, i) => [c.tip(i), fmtInt(v)]));
+    c.box.querySelector('.xhair-dots').innerHTML = g.list.map(se =>
+      `<circle cx="${g.X(best.t)}" cy="${g.Y(se.value(best))}" r="4" fill="${se.color}" stroke="var(--surface-1)" stroke-width="2"/>`).join('');
+    showTip(e, `t = ${fmt(best.t, 2)} s`, g.list.map(se => [se.tip, fmtInt(se.value(best))]));
   });
   c.box.addEventListener('mouseleave', hide);
 }
@@ -1032,17 +1054,18 @@ for (const c of Object.values(CHARTS)) {
 
 function renderLatency() {
   const box = $('#latency-table');
-  const tierBox = $('#tier-latency-table');
+  const mtBox = $('#tier-latency-table');
   const subBox = $('#sub-latency-table');
   const cfg = activeCfg();
   const tsOn = cfg.ts.enabled;
-  const weighted = cfg.mt.mode === 'weighted';
+  const mtMode = cfg.mt.mode;
+  const weighted = mtMode === 'weighted';
   const offTs = '<p class="table-off">Not shown: Traffic Shaping is set to None, so Service Levels don\'t affect throughput.</p>';
-  const offMt = '<p class="table-off">Not shown: Multi-Tenancy is not set to Weighted, so tiers don\'t affect throughput.</p>';
+  const offMt = '<p class="table-off">Not shown: Multi-Tenancy is set to None, so subaccounts share one queue per Service Level.</p>';
   if (!sim) {
     const wait = '<p class="hint">Results appear here while the simulation runs.</p>';
     box.innerHTML = tsOn ? wait : offTs;
-    tierBox.innerHTML = weighted ? wait : offMt;
+    mtBox.innerHTML = mtMode !== 'none' ? wait : offMt;
     subBox.innerHTML = '<p class="hint">Per-subaccount results appear here while the simulation runs.</p>';
     return;
   }
@@ -1051,42 +1074,57 @@ function renderLatency() {
   const frac = v => Math.min(100, Math.round((v / allMax) * 100));
   const bar = v => `<span class="bar-cell"><span class="num">${fmt(v, 2)} s</span><span class="track"><i style="width:${frac(v)}%"></i></span></span>`;
   const cells = r => `<td>${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${fmt(r.p50, 2)} s</td><td>${bar(r.p95)}</td><td>${fmt(r.max, 2)} s</td>`;
-  const row = (label, r) => `<tr><td>${label}</td>${cells(r)}</tr>`;
-  const slLabel = sl => `<span class="swatch" style="background:var(--series-${sl})"></span> ${SL_SHAPES[sl]} SL ${sl}`;
-  const tierLabel = i => `<span class="swatch" style="background:var(--tier-${i + 1})"></span> Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`;
+  const row = (label, r) => `<tr><td class="l">${label}</td>${cells(r)}</tr>`;
+  const swatch = color => `<span class="swatch" style="background:${color}"></span>`;
+  const slLabel = sl => `${swatch(`var(--series-${sl})`)} ${SL_SHAPES[sl]} SL ${sl}`;
   const tierWeights = sim.cfg.mt.tiers.map(t => t.weight);
+  const tierLabel = i => `${swatch(`var(--tier-${i + 1})`)} Tier ${i + 1} <span class="muted">· ${fmt(pctOf(tierWeights, i), 0)}%</span>`;
+  const subLabel = i => `${swatch(SUB_COLORS[i])} <b>${subLetter(i)}</b> · ${escapeHtml(sim.cfg.subaccounts[i].name)}`;
   const head = '<table class="fixed summary"><colgroup><col class="c-label"><col class="c-count"><col class="c-time"><col class="c-time"><col class="c-p95"><col class="c-time"></colgroup>'
     + '<thead><tr><th></th><th>Delivered</th><th>Avg</th><th>p50</th><th>p95</th><th>Max</th></tr></thead><tbody>';
+  const table = rows => `${head}${rows.join('')}</tbody></table>`;
 
-  box.innerHTML = tsOn ? head + sum.bySL.map((r, i) => row(slLabel(i + 1), r)).join('') + '</tbody></table>' : offTs;
-  tierBox.innerHTML = weighted ? head + sum.byTier.map((r, i) => row(tierLabel(i), r)).join('') + '</tbody></table>' : offMt;
+  box.innerHTML = tsOn ? table(sum.bySL.map((r, i) => row(slLabel(i + 1), r))) : offTs;
+  if (weighted) mtBox.innerHTML = table(sum.byTier.map((r, i) => row(tierLabel(i), r)));
+  else if (mtMode === 'even') mtBox.innerHTML = table(sum.bySub.map((r, i) => row(subLabel(i), r)));
+  else mtBox.innerHTML = offMt;
 
-  // Full-width table: one row per subaccount; each Service Level is a column group.
-  const parts = ['subaccount', ...(weighted ? ['tier'] : []), ...(tsOn ? ['Service Level'] : [])];
-  $('#sub-latency-title').textContent = `Time spent in queue by ${parts.length > 2 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts.join(' and ')}`;
+  // Full-width table: a row per subaccount and sender type; each Service Level is a column group.
+  const parts = ['subaccount', 'sender type', ...(weighted ? ['tier'] : []), ...(tsOn ? ['Service Level'] : [])];
+  $('#sub-latency-title').textContent = `Time spent in queue by ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
   const order = sim.cfg.subaccounts.map((_, i) => i)
     .sort((a, b) => (weighted ? sim.cfg.subaccounts[a].tier - sim.cfg.subaccounts[b].tier : 0) || a - b);
   const groups = [['All messages', null], ...(tsOn ? [1, 2, 3].map(sl => [slLabel(sl), sl]) : [])];
-  const subBar = bar;
   const short = r => r.count
-    ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${subBar(r.p95)}</td>`
+    ? `<td class="g-start">${fmtInt(r.count)}</td><td>${fmt(r.avg, 2)} s</td><td>${bar(r.p95)}</td>`
     : '<td class="g-start empty">–</td><td class="empty">–</td><td class="empty">–</td>';
   const groupCols = '<col class="c-count"><col class="c-time"><col class="c-p95">';
-  let t = `<table class="fixed sub-latency${weighted ? ' has-tier' : ''}"><colgroup><col class="c-sub">${weighted ? '<col class="c-tier">' : ''}${groupCols.repeat(groups.length)}</colgroup>`
-    + '<thead><tr><th rowspan="2">Subaccount</th>';
-  if (weighted) t += '<th rowspan="2">Tier</th>';
+  let t = `<table class="fixed sub-latency${weighted ? ' has-tier' : ''}"><colgroup><col class="c-sub"><col class="c-st">${weighted ? '<col class="c-tier">' : ''}${groupCols.repeat(groups.length)}</colgroup>`
+    + '<thead><tr><th rowspan="2" class="l">Subaccount</th><th rowspan="2" class="l">Sender type</th>';
+  if (weighted) t += '<th rowspan="2" class="l">Tier</th>';
   t += groups.map(([label]) => `<th colspan="3" class="g-start g-head">${label}</th>`).join('') + '</tr><tr>';
   t += groups.map(() => '<th class="g-start" title="Messages delivered">Msgs</th><th>Avg</th><th>p95</th>').join('') + '</tr></thead><tbody>';
   let lastTier = null;
   for (const i of order) {
     const sa = sim.cfg.subaccounts[i];
-    const tierBreak = weighted && lastTier !== null && sa.tier !== lastTier ? ' class="tier-break"' : '';
+    const stRows = sum.bySubST[i];
+    const rows = stRows.length > 1
+      ? [...stRows.map(r => ({ label: SENDER_TYPES.find(st => st.id === r.stId).label, all: r.all, sl: r.sl })), { label: 'Total', all: sum.bySub[i], sl: sum.bySubSL[i], total: true }]
+      : stRows.length === 1
+        ? [{ label: SENDER_TYPES.find(st => st.id === stRows[0].stId).label, all: stRows[0].all, sl: stRows[0].sl }]
+        : [{ label: '–', all: sum.bySub[i], sl: sum.bySubSL[i] }];
+    const tierBreak = weighted && lastTier !== null && sa.tier !== lastTier;
     lastTier = sa.tier;
-    t += `<tr${tierBreak}><td><b>${String.fromCharCode(65 + i)}</b> · ${escapeHtml(sa.name)}</td>`;
-    if (weighted) t += `<td>Tier ${sa.tier + 1} <span class="muted">· ${fmt(pctOf(tierWeights, sa.tier), 0)}%</span></td>`;
-    t += short(sum.bySub[i]);
-    if (tsOn) sum.bySubSL[i].forEach(r => { t += short(r); });
-    t += '</tr>';
+    rows.forEach((r, k) => {
+      const cls = [k === 0 ? 'sub-first' : 'sub-cont', k === 0 && tierBreak ? 'tier-break' : '', r.total ? 'sub-total' : ''].filter(Boolean).join(' ');
+      t += `<tr class="${cls}">`;
+      t += k === 0 ? `<td rowspan="${rows.length}" class="l" title="${escapeHtml(sa.name)}"><b>${subLetter(i)}</b> · ${escapeHtml(sa.name)}</td>` : '';
+      t += `<td class="l">${r.total ? '<b>Total</b>' : r.label}</td>`;
+      if (weighted) t += k === 0 ? `<td rowspan="${rows.length}" class="l">Tier ${sa.tier + 1} <span class="muted">· ${fmt(pctOf(tierWeights, sa.tier), 0)}%</span></td>` : '';
+      t += short(r.all);
+      if (tsOn) r.sl.forEach(x => { t += short(x); });
+      t += '</tr>';
+    });
   }
   subBox.innerHTML = `${t}</tbody></table>`;
 }

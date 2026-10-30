@@ -18,6 +18,7 @@
   --tier-1:         #7EA2FF; /* Multi-Tenancy tier 1 · purple-blue */
   --tier-2:         #CC79A7; /* tier 2 · pink */
   --tier-3:         #F0E442; /* tier 3 · yellow */
+  --sub-6:          #E8E6E1; /* 6th subaccount in the Even chart · light neutral */
   --good:           #0ca30c;
   --warning:        #fab219;
   --critical:       #d03b3b;
@@ -163,11 +164,11 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6
 .carrier-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .carrier-incident { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 td .muted { color: var(--text-muted); font-weight: 400; }
-#latency-table td, #latency-table th, #sub-latency-table td, #sub-latency-table th { white-space: nowrap; }
+#latency-table td, #latency-table th, #tier-latency-table td, #tier-latency-table th, #sub-latency-table td, #sub-latency-table th { white-space: nowrap; }
+#tier-latency-table { overflow-x: auto; }
+table td.l, table th.l { text-align: left; }
 #sub-latency-table { overflow-x: auto; }
 table.sub-latency th { vertical-align: bottom; }
-table.sub-latency th:nth-child(1), table.sub-latency td:nth-child(1) { text-align: left; }
-table.sub-latency.has-tier th:nth-child(2), table.sub-latency.has-tier tbody td:nth-child(2) { text-align: left; }
 
 table.sub-latency th.g-head { text-align: center; color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--axis); }
 table.sub-latency .g-start { border-left: 1px solid var(--grid); padding-left: 12px; }
@@ -186,24 +187,30 @@ table.fixed col.c-count { width: 74px; }
 table.fixed col.c-time { width: 62px; }
 table.fixed col.c-p95 { width: 104px; }
 table.summary col.c-label { width: 104px; }
-table.sub-latency col.c-sub { width: 106px; }
-table.sub-latency col.c-tier { width: 78px; }
-table.sub-latency col.c-count { width: 54px; }
+table.sub-latency col.c-sub { width: 112px; }
+table.sub-latency col.c-st { width: 88px; }
+table.sub-latency col.c-tier { width: 80px; }
+table.sub-latency col.c-count { width: 48px; }
 table.sub-latency col.c-time { width: 58px; }
-table.sub-latency col.c-p95 { width: 92px; }
+table.sub-latency col.c-p95 { width: 86px; }
 table.sub-latency td:nth-child(1) { white-space: nowrap; }
 .bar-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .bar-cell .num { flex: none; min-width: 52px; text-align: right; }
 .bar-cell .track { flex: none; width: 34px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
 .bar-cell .track i { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--axis); }
-table.sub-latency .bar-cell .track { width: 28px; }
+table.sub-latency .bar-cell .track { width: 24px; }
 /* Fixed tables are at least as wide as their columns; narrow windows scroll inside the card. */
 #latency-table { overflow-x: auto; }
 table.summary { min-width: 468px; }
-table.sub-latency { min-width: 922px; }
-table.sub-latency.has-tier { min-width: 1000px; }
+table.sub-latency { min-width: 968px; }
+table.sub-latency.has-tier { min-width: 1048px; }
 h3.table-title { font-size: 12px; margin: 14px 0 4px; color: var(--text-secondary); }
 .chart-off { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 24px; color: var(--text-secondary); font-size: 12px; border: 1px dashed var(--axis); border-radius: 8px; }
 .table-off { color: var(--text-secondary); font-size: 12px; padding: 8px 0; }
 .chip-note { color: var(--text-muted); margin-left: -2px; }
 .hint.st-note { margin: 6px 0 0; color: var(--text-primary); }
+table.sub-latency td[rowspan] { vertical-align: top; }
+table.sub-latency tr.sub-cont td { border-top: 0; }
+table.sub-latency tr.sub-first td { border-top: 1px solid var(--grid); }
+table.sub-latency tr.sub-first.tier-break td { border-top: 1px solid var(--axis); }
+table.sub-latency tr.sub-total td { color: var(--text-primary); font-weight: 600; }

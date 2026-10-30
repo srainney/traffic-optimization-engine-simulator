@@ -145,10 +145,12 @@ class Simulation {
 
     this.queuedBySL = [0, 0, 0, 0];
     this.queuedByTier = [0, 0, 0];
+    this.queuedBySub = cfg.subaccounts.map(() => 0);
     this.latBySL = [[], [], [], []];
     this.latBySub = cfg.subaccounts.map(() => []);
     this.latByTier = [[], [], []];
     this.latBySubSL = cfg.subaccounts.map(() => [[], [], [], []]);
+    this.latBySubST = cfg.subaccounts.map(() => ({})); // sub → sender type → { all, sl[1..3] }
     this.sentBySub = cfg.subaccounts.map(() => 0);
     this.timeline = [];
     this.nextSample = 0;
@@ -211,6 +213,7 @@ class Simulation {
     cq.tickIn++;
     this.queuedBySL[sl]++;
     this.queuedByTier[this.cfg.subaccounts[stream.sub].tier]++;
+    this.queuedBySub[stream.sub]++;
     this.sentBySub[stream.sub]++;
     if (this.onArrive) this.onArrive(m, cq, leaf);
   }
@@ -343,10 +346,14 @@ class Simulation {
     const wait = this.t - m.t0;
     this.queuedBySL[m.sl]--;
     this.queuedByTier[this.cfg.subaccounts[m.sub].tier]--;
+    this.queuedBySub[m.sub]--;
     this.inCarrier--;
     this.latBySL[m.sl].push(wait);
     this.latBySub[m.sub].push(wait);
     this.latBySubSL[m.sub][m.sl].push(wait);
+    const byST = this.latBySubST[m.sub][cq.stId] ||= { all: [], sl: [[], [], [], []] };
+    byST.all.push(wait);
+    byST.sl[m.sl].push(wait);
     const tier = this.cfg.subaccounts[m.sub].tier;
     if (this.cfg.mt.mode === 'weighted' && this.latByTier[tier]) this.latByTier[tier].push(wait);
     cq.delivered++;
@@ -372,7 +379,7 @@ class Simulation {
   }
 
   sample() {
-    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1), tier: this.queuedByTier.slice() });
+    this.timeline.push({ t: this.t, q: this.queuedBySL.slice(1), tier: this.queuedByTier.slice(), sub: this.queuedBySub.slice() });
     this.nextSample += 0.25;
   }
 
@@ -386,6 +393,9 @@ class Simulation {
       byTier: this.latByTier.map(summarize),
       bySub: this.latBySub.map(summarize),
       bySubSL: this.latBySubSL.map(levels => [1, 2, 3].map(sl => summarize(levels[sl]))),
+      bySubST: this.latBySubST.map(byST => SENDER_TYPES.filter(st => byST[st.id]).map(st => ({
+        stId: st.id, all: summarize(byST[st.id].all), sl: [1, 2, 3].map(sl => summarize(byST[st.id].sl[sl])),
+      }))),
     };
   }
 }
