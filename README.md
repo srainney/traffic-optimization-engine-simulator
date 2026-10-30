@@ -208,12 +208,17 @@ Each chart's three colors stay distinct for the common forms of color blindness,
 
 ## Presets
 
-**Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). The first three start with both features set to None, so you can turn them on yourself. The rest turn them on for you.
+**Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). Each preset sets its own Traffic Shaping and Multi-Tenancy modes, shown in the table.
 
-Every preset sends faster than the throughput each of its queues receives, so queues build up by default. The exception is the **waves** preset: some of its streams send below their share at times, to show unused throughput moving to the queues that still have messages waiting.
+The first three presets show that **SL 1 and Tier 1 are the faster queues**. Low volumes there pass straight through with little to no queueing, while high volumes on SL 3 or Tier 3 back up. Each spans Short Code, Alphanumeric and Long Code.
+
+Every other preset sends faster than the throughput each of its queues receives, so queues build up by default. The exception is the **waves** preset: some of its streams send below their share at times, to show unused throughput moving to the queues that still have messages waiting.
 
 | Preset | Modes | What it shows |
 |---|---|---|
+| Fast lane: low-volume SL1 vs high-volume SL3, all sender types | Weighted / None | On every sender type, a small SL 1 stream sends well under its share and almost never waits (p95 about 0.1 s), while a large SL 3 stream backs up to hundreds or thousands of messages (p95 about 16 s). |
+| Fast tier: low-volume Tier 1 vs high-volume Tier 3, all sender types | None / Weighted | The same contrast by Multi-Tenancy tier: a Tier 1 subaccount sending little stays near zero, while a Tier 3 subaccount sending a lot backs up. |
+| Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, all sender types | Weighted / Weighted | Both features together: Tier 1 on SL 1 (the fastest queue) sends little and passes straight through, while Tier 3 on SL 3 (the slowest) floods and backs up. |
 | Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code. |
 | Noisy neighbor subaccount | None / None | One Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
 | Mixed sender types | None / None | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |

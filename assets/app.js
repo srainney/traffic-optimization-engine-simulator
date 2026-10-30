@@ -56,6 +56,64 @@ function defaultMapping() {
 }
 
 const PRESETS = {
+  fastLane: {
+    label: 'Fast lane: low-volume SL1 vs high-volume SL3, all sender types',
+    ts: 'weighted', mt: 'none',
+    subaccounts: [
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Promo Co', tier: 2, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+    ],
+    streams: [
+      // SL1 sends well under its share, so it barely queues; SL3 floods and backs up.
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 25, start: 0, duration: 15 },
+      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 20, start: 0, duration: 15 },
+      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 150, start: 0, duration: 15 },
+      { sub: 0, senderType: 'alpha', intent: 'fraud', rate: 8, start: 0, duration: 15 },
+      { sub: 2, senderType: 'alpha', intent: 'announcements', rate: 60, start: 0, duration: 15 },
+      { sub: 0, senderType: 'longcode', intent: 'security', rate: 5, start: 0, duration: 15 },
+      { sub: 2, senderType: 'longcode', intent: 'polling', rate: 30, start: 0, duration: 15 },
+    ],
+  },
+  fastTier: {
+    label: 'Fast tier: low-volume Tier 1 vs high-volume Tier 3, all sender types',
+    ts: 'none', mt: 'weighted',
+    subaccounts: [
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Promo Co', tier: 2, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+    ],
+    streams: [
+      // Tier 1 sends well under its share, so it barely queues; Tier 3 floods and backs up.
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 15 },
+      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 20, start: 0, duration: 15 },
+      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 140, start: 0, duration: 15 },
+      { sub: 0, senderType: 'alpha', intent: 'fraud', rate: 10, start: 0, duration: 15 },
+      { sub: 2, senderType: 'alpha', intent: 'announcements', rate: 55, start: 0, duration: 15 },
+      { sub: 0, senderType: 'longcode', intent: 'security', rate: 7, start: 0, duration: 15 },
+      { sub: 2, senderType: 'longcode', intent: 'polling', rate: 35, start: 0, duration: 15 },
+    ],
+  },
+  fastBoth: {
+    label: 'Fast lane + fast tier: Tier 1 SL1 vs Tier 3 SL3, all sender types',
+    ts: 'weighted', mt: 'weighted',
+    subaccounts: [
+      { name: 'Bank', tier: 0, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Retailer', tier: 1, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+      { name: 'Promo Co', tier: 2, senderTypes: ['shortcode', 'alpha', 'longcode'] },
+    ],
+    streams: [
+      // Tier 1 on SL1 is the fastest queue and sends little; Tier 3 on SL3 is the slowest and floods.
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 15 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 10, start: 0, duration: 15 },
+      { sub: 1, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 15 },
+      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 150, start: 0, duration: 15 },
+      { sub: 0, senderType: 'alpha', intent: 'security', rate: 8, start: 0, duration: 15 },
+      { sub: 2, senderType: 'alpha', intent: 'announcements', rate: 60, start: 0, duration: 15 },
+      { sub: 0, senderType: 'longcode', intent: 'fraud', rate: 6, start: 0, duration: 15 },
+      { sub: 2, senderType: 'longcode', intent: 'polling', rate: 40, start: 0, duration: 15 },
+    ],
+  },
   blast: {
     label: 'Marketing blast + OTP burst',
     subaccounts: [
