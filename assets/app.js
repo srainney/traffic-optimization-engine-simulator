@@ -100,15 +100,15 @@ const PRESETS = {
       { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
-      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 30, start: 0, duration: 20 },
-      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 20, start: 0, duration: 20 },
-      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 20, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 12, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 10, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 10, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'events', rate: 8, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 5, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 45, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 27, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 18, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 23, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 14, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 9, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 8, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'events', rate: 5, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 3, start: 0, duration: 20 },
     ],
   },
   grid9waves: {
@@ -145,8 +145,8 @@ const PRESETS = {
       { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
-      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 16, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'fraud', rate: 16, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 22, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'fraud', rate: 22, start: 0, duration: 20 },
       { sub: 2, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
       { sub: 3, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
       { sub: 4, senderType: 'shortcode', intent: 'security', rate: 8, start: 0, duration: 20 },
@@ -172,15 +172,15 @@ const PRESETS = {
       { name: 'Startup', tier: 2, senderTypes: ['shortcode'] },
     ],
     streams: [
-      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 20, start: 0, duration: 20 },
-      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 12, start: 0, duration: 20 },
-      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 8, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 12, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 8, start: 0, duration: 20 },
-      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 6, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 6, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'otp', rate: 38, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'delivery', rate: 23, start: 0, duration: 20 },
+      { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'notifications', rate: 19, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'customercare', rate: 12, start: 0, duration: 20 },
+      { sub: 1, senderType: 'shortcode', intent: 'announcements', rate: 8, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'security', rate: 7, start: 0, duration: 20 },
       { sub: 2, senderType: 'shortcode', intent: 'events', rate: 4, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 4, start: 0, duration: 20 },
+      { sub: 2, senderType: 'shortcode', intent: 'polling', rate: 3, start: 0, duration: 20 },
     ],
   },
   evenGrid: {
@@ -199,7 +199,7 @@ const PRESETS = {
       { sub: 2, senderType: 'shortcode', intent: 'delivery', rate: 15, start: 0, duration: 20 },
       { sub: 0, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
       { sub: 1, senderType: 'shortcode', intent: 'marketing', rate: 15, start: 0, duration: 20 },
-      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 8, start: 6, duration: 8 },
+      { sub: 2, senderType: 'shortcode', intent: 'marketing', rate: 12, start: 6, duration: 8 },
     ],
   },
 };
@@ -379,7 +379,7 @@ function renderMultiTenancy() {
             }
             renderMultiTenancy(); renderStreams(); renderCarriers();
           },
-        }), st.label);
+        }), st.label, st.note ? el('span', { class: 'chip-note', title: `Long Code ${st.note}` }, '*') : null);
     }));
     subs.append(el('div', { class: 'sub-block' }, row, chips));
   });
@@ -397,7 +397,8 @@ function renderCarriers() {
   }
 
   const cfg = state.senderTypes[state.stTab];
-  const label = SENDER_TYPES.find(s => s.id === state.stTab).label;
+  const stDef = SENDER_TYPES.find(s => s.id === state.stTab);
+  const label = stDef.label;
   const field = el('label', {}, `${label} egress MPS`, numInput(cfg.mps, v => { cfg.mps = v; }, { min: 0, step: 1 }));
   const cards = cfg.carriers.map((c, i) => {
     const status = select([['healthy', '✓ Healthy'], ['degraded', '▲ Degraded'], ['outage', '✕ Outage']], c.status, v => { c.status = v; renderCarriers(); });
@@ -416,6 +417,7 @@ function renderCarriers() {
     return card;
   });
   $('#carriers').replaceChildren(field,
+    stDef.note ? el('p', { class: 'hint st-note' }, `${label} ${stDef.note}. US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy.`) : null,
     el('p', { class: 'hint' }, 'Each carrier has its own queue, drained at the carrier\'s own rate. The customer\'s MPS, Traffic Shaping and Multi-Tenancy don\'t change carrier rates. A degraded carrier (slowed) or an outage (stopped) only backs up that carrier\'s queue; the other carriers and the Service Level / tier queues keep moving.'),
     ...cards);
 }
@@ -436,7 +438,7 @@ function renderStreams() {
         if (!allowed.includes(s.senderType)) s.senderType = SENDER_TYPES.find(t => allowed.includes(t.id)).id;
         renderStreams(); renderCarriers();
       })),
-      el('label', {}, 'Sender type', select(SENDER_TYPES.filter(st => state.subaccounts[s.sub].senderTypes.includes(st.id)).map(st => [st.id, st.label]), s.senderType, v => { s.senderType = v; state.stTab = v; renderCarriers(); })),
+      el('label', {}, 'Sender type', select(SENDER_TYPES.filter(st => state.subaccounts[s.sub].senderTypes.includes(st.id)).map(st => [st.id, st.note ? `${st.label} (${st.note})` : st.label]), s.senderType, v => { s.senderType = v; state.stTab = v; renderCarriers(); })),
       el('label', {}, 'MessageIntent', select(INTENTS.map(it => [it.id, it.label || it.id]), s.intent, v => { s.intent = v; renderStreams(); })),
       el('label', {}, 'Rate (msg/s)', numInput(s.rate, v => { s.rate = v; }, { min: 0 })),
       el('label', {}, 'Start (s)', numInput(s.start, v => { s.start = v; }, { min: 0, step: 0.5 })),
@@ -622,7 +624,6 @@ function readColors() {
   };
 }
 readColors();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(0); renderDepthChart(); });
 
 const LANE_H = 18;
 const HEAD_H = 28;
@@ -704,7 +705,7 @@ function draw(dtReal) {
   const x0 = labelW + 16;
   const x1 = W - CBOX_W - 230;
   layout.laneEnd = W - CBOX_W - 24;
-  const maxDots = Math.max(1, Math.floor((x1 - x0 - 30) / DOT_GAP));
+  const maxDots = Math.max(1, Math.floor((x1 - x0 - 52) / DOT_GAP));
   const ease = dtReal > 0 ? Math.min(1, dtReal * 12) : 1;
 
   for (const row of layout.rows) {
@@ -718,14 +719,17 @@ function draw(dtReal) {
     ctx.fillStyle = colors.text;
     ctx.font = '600 12px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${st.label} egress`, 16, row.y + 14);
+    const title = `${st.label}${st.note ? ` (${st.note})` : ''} egress`;
+    ctx.fillText(title, 16, row.y + 14);
+    const titleEnd = 16 + ctx.measureText(title).width;
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillStyle = colors.text2;
-    ctx.fillText(`${fmtInt(queued)} queued`, x0, row.y + 14);
+    const qx = Math.max(x0, titleEnd + 14);
+    ctx.fillText(`${fmtInt(queued)} queued`, qx, row.y + 14);
 
     // shared egress meter: one MPS budget feeds every carrier
     const util = cq.mps > 0 ? Math.min(1, cq.outNow / cq.mps) : 0;
-    const mx = x0 + 110; const mw = Math.max(40, x1 - mx - 150);
+    const mx = qx + 110; const mw = Math.max(40, x1 - mx - 150);
     ctx.fillStyle = colors.grid;
     ctx.beginPath(); ctx.roundRect(mx, row.y + 12, mw, 4, 2); ctx.fill();
     ctx.fillStyle = colors.accent;
@@ -761,9 +765,7 @@ function draw(dtReal) {
       }
       if (q.length > maxDots) {
         ctx.fillStyle = colors.text2;
-        ctx.textAlign = 'right';
-        ctx.fillText(`+${fmtInt(q.length - maxDots)}`, x0 + 24, ly);
-        ctx.textAlign = 'left';
+        ctx.fillText(`+${fmtInt(q.length - maxDots)}`, x0 + 2, ly);
       }
 
       // live rate for this lane

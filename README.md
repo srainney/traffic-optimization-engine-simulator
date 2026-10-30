@@ -2,7 +2,7 @@
 
 An interactive, in-browser simulator for Twilio's Traffic Optimization Engine. It shows how messages of different priorities share a sender type's throughput under [Traffic Shaping](https://www.twilio.com/docs/messaging/features/traffic-shaping) and [Multi-Tenancy](https://www.twilio.com/docs/messaging/features/multi-tenancy), and how they flow out to carrier queues.
 
-**Live demo:** https://toe-simulator-8125-dev.twil.io/index.html
+**Live demo:** https://twilio-throughput-simulator-8381-dev.twil.io/index.html
 
 > This is an educational model, not Twilio's production code. It follows the behavior described in Twilio's public docs and the weighting rules described below. Carrier names and default MPS values are placeholders.
 
@@ -24,7 +24,7 @@ An interactive, in-browser simulator for Twilio's Traffic Optimization Engine. I
 
 There is no build step and nothing to install. Either:
 
-- open the [live demo](https://toe-simulator-8125-dev.twil.io/index.html), or
+- open the [live demo](https://twilio-throughput-simulator-8381-dev.twil.io/index.html), or
 - clone the repo and open `assets/index.html` in a browser.
 
 Choose a preset, set Traffic Shaping and Multi-Tenancy, and press **▶ Start simulation**.
@@ -48,6 +48,8 @@ The model advances in 20 ms steps. Every step it decides how much each queue may
 ### Sender types and egress
 
 The simulator models three sender types: **Short Code** (default 100 MPS), **Long Code** (20 MPS) and **Alphanumeric** (30 MPS).
+
+> **Long Code excludes US 10DLC.** US and Canada A2P 10DLC traffic isn't part of Traffic Shaping or Multi-Tenancy, so the Long Code sender type here represents long codes outside US/Canada 10DLC. The app shows the same note.
 
 - Each sender type has **one egress MPS**, the downstream total shared by all of its carriers. If Short Code is set to 100 MPS, Carrier 1, 2 and 3 *together* receive 100 MPS. Each carrier does not get 100.
 - Every sender type has three carriers, named **Carrier 1**, **Carrier 2** and **Carrier 3**. Messages are spread evenly across them as they leave the queue.
@@ -177,26 +179,43 @@ The settings lock while a simulation runs. **Reset** unlocks them.
 
 All live readouts are recomputed every step, so you see a change in throughput as soon as it happens, without any averaging delay.
 
+### Colors
+
+The app is always in dark mode. Service Levels and tiers use a colorblind-safe palette, chosen to be readable on the dark background:
+
+| Series | Color | Hex |
+|---|---|---|
+| SL 1 | Sky blue | `#56B4E9` |
+| SL 2 | Orange | `#E69F00` |
+| SL 3 | Teal | `#009E73` |
+| Tier 1 | Purple-blue | `#7EA2FF` |
+| Tier 2 | Pink | `#CC79A7` |
+| Tier 3 | Yellow | `#F0E442` |
+
+Each chart's three colors stay distinct for the common forms of color blindness, and every series is also labeled, so color is never the only cue. Service Level dots also use shapes (● ■ ▲). Carrier status uses separate green / amber / red, each paired with an icon and label.
+
 ### Results
 
 - **Stat tiles** show simulated time, messages sent, messages waiting in Twilio queues, messages waiting at carriers, and messages delivered by carriers.
 - **Two charts, side by side**, each with its wait-time table underneath (delivered count, average, p50, p95 and max wait, including time waiting at a carrier):
   - **Messages waiting in queue, by Service Level** with **Time spent in queue, by Service Level**. Populates only when Traffic Shaping is **Weighted**.
-  - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier**. Populates only when Multi-Tenancy is **Weighted**. Tiers use their own colors (violet, magenta, green) so they aren't confused with Service Levels.
+  - **Messages waiting in queue, by Multi-Tenancy tier** with **Time spent in queue, by Multi-Tenancy tier**. Populates only when Multi-Tenancy is **Weighted**. Tiers use their own colors (purple-blue, pink, yellow) so they aren't confused with Service Levels.
   - When a feature isn't splitting throughput, its chart and table show a note instead of numbers, because those breakdowns don't affect anything. Hover a chart for exact values at any time.
 - **Time spent in queue by subaccount** is a full-width table below, with one row per subaccount and its delivered count, average and p95 for all its messages. The **Tier** column appears only when Multi-Tenancy is Weighted, and the **SL 1 / 2 / 3** columns only when Traffic Shaping is Weighted (– where a subaccount sent nothing). Subaccounts are listed by tier.
 - Both tables have fixed column widths, so they don't shift as values grow during a run. The p95 bars sit on a fixed-width track. If the window is too narrow, the table scrolls sideways inside its card.
 
 ## Presets
 
-**Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). The first three start with both features set to None, so you can turn them on yourself. The last four turn them on for you.
+**Built-in presets** load a set of subaccounts and streams, and reset weights and MPS to their defaults (Traffic Shaping 50/30/20, tiers 60/30/10, Short Code 100 MPS). The first three start with both features set to None, so you can turn them on yourself. The rest turn them on for you.
+
+Every preset sends faster than the throughput each of its queues receives, so queues build up by default. The exception is the **waves** preset: some of its streams send below their share at times, to show unused throughput moving to the queues that still have messages waiting.
 
 | Preset | Modes | What it shows |
 |---|---|---|
 | Marketing blast + OTP burst | None / None | A 320 msg/s marketing blast on Short Code, with an OTP burst and customer-care traffic arriving partway through. Two subaccounts also send on Long Code. |
 | Noisy neighbor subaccount | None / None | One Long Code subaccount floods announcements while two others send small amounts of notifications and delivery traffic. |
 | Mixed sender types | None / None | Traffic spread across Short Code, Alphanumeric and Long Code, with subaccounts that use several sender types. |
-| 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
+| 9 queues: 3 tiers × 3 Service Levels (steady) | Weighted / Weighted | One subaccount per tier, each sending on all three levels on Short Code at about 1.5× its share. All nine queues stay backlogged: SL 1 = 30 / 15 / 5, SL 2 = 18 / 9 / 3, SL 3 = 12 / 6 / 2 MPS across Tiers 1 / 2 / 3. |
 | 9 queues: tiers and levels starting and stopping in waves | Weighted / Weighted | SL 3 from every tier, then SL 2 joins (staggered by tier), then short SL 1 bursts, then everything winds down. It shows each level's share moving between tiers and levels as they start, stop and drain. |
 | Carrier outage: Carrier 2 down 6–14 s, 9 queues | Weighted / Weighted | Nine queues on Short Code. Carrier 2 has an outage from 6 to 14 s, so its queue backs up while Carriers 1 and 3 keep delivering and the Service Level / tier queues are unaffected. Once Carrier 2 recovers, it drains its backlog. |
 | Shared tiers: 5 subaccounts, 2 per tier, all Service Levels | Weighted / Weighted | Two subaccounts each in Tiers 1 and 2 and one in Tier 3, on all three levels (15 queues). Tier-mates split their tier's share on each level, e.g. SL 1: 15 + 15 / 7.5 + 7.5 / 5. |
@@ -215,7 +234,7 @@ Saved presets are kept in the browser's **localStorage** under the key `toe-sim-
 ```
 assets/
   index.html   page structure
-  styles.css   layout and theme (light and dark)
+  styles.css   layout and the dark theme
   sim.js       simulation model, with no DOM access: queues, weighted split, stats
   app.js       UI: controls, presets, canvas animation, chart, tooltips
 package.json            project metadata and deploy script
@@ -241,7 +260,7 @@ The app is deployed as static assets with the [Twilio CLI](https://www.twilio.co
 
 ```bash
 twilio plugins:install @twilio-labs/plugin-serverless   # once
-twilio serverless:deploy --service-name toe-simulator --assets-folder assets --override-existing-project
+twilio serverless:deploy --service-name twilio-throughput-simulator --assets-folder assets --override-existing-project
 ```
 
 This uses your active `twilio profiles` login. Open the deployed app at `/index.html`; the bare domain returns 404.

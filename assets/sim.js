@@ -31,7 +31,7 @@
 const SENDER_TYPES = [
   { id: 'shortcode', label: 'Short Code', defaultMps: 100 },
   { id: 'alpha', label: 'Alphanumeric', defaultMps: 30 },
-  { id: 'longcode', label: 'Long Code', defaultMps: 20 },
+  { id: 'longcode', label: 'Long Code', note: 'excludes US 10DLC', defaultMps: 20 },
 ];
 
 const carrierName = i => `Carrier ${i + 1}`;

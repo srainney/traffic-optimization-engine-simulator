@@ -1,4 +1,4 @@
 {
-  "serviceName": "toe-simulator",
+  "serviceName": "twilio-throughput-simulator",
   "assetsFolder": "assets"
 }

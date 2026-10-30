@@ -1,9 +1,9 @@
 {
-  "name": "traffic-optimization-engine-simulator",
+  "name": "twilio-throughput-simulator",
   "version": "1.0.0",
   "private": true,
   "description": "Browser simulator for Twilio Traffic Shaping and Multi-Tenancy",
   "scripts": {
-    "deploy": "twilio serverless:deploy"
+    "deploy": "twilio serverless:deploy --service-name twilio-throughput-simulator --assets-folder assets --override-existing-project"
   }
 }

@@ -1,46 +1,28 @@
-.viz-root {
-  color-scheme: light;
-  --page:           #f9f9f7;
-  --surface-1:      #fcfcfb;
-  --surface-2:      #f3f2ee;
-  --text-primary:   #0b0b0b;
-  --text-secondary: #52514e;
+:root, .viz-root {
+  /* Always dark: there is no light theme. */
+  color-scheme: dark;
+  --page:           #0d0d0d;
+  --surface-1:      #1a1a19;
+  --surface-2:      #232322;
+  --text-primary:   #f0efec;
+  --text-secondary: #c3c2b7;
   --text-muted:     #898781;
-  --grid:           #e1e0d9;
-  --axis:           #c3c2b7;
-  --border:         rgba(11, 11, 11, 0.10);
-  --accent:         #2a78d6;
-  --series-1:       #2a78d6; /* Service Level 1 */
-  --series-2:       #eb6834; /* Service Level 2 */
-  --series-3:       #1baf7a; /* Service Level 3 */
-  --tier-1:         #6250d6; /* Multi-Tenancy tier 1 */
-  --tier-2:         #e87ba4; /* tier 2 */
-  --tier-3:         #008300; /* tier 3 */
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255, 255, 255, 0.10);
+  --accent:         #3987e5;
+  /* Colorblind-safe series palette */
+  --series-1:       #56B4E9; /* Service Level 1 · sky blue */
+  --series-2:       #E69F00; /* Service Level 2 · orange */
+  --series-3:       #009E73; /* Service Level 3 · teal */
+  --tier-1:         #7EA2FF; /* Multi-Tenancy tier 1 · purple-blue */
+  --tier-2:         #CC79A7; /* tier 2 · pink */
+  --tier-3:         #F0E442; /* tier 3 · yellow */
   --good:           #0ca30c;
   --warning:        #fab219;
   --critical:       #d03b3b;
 }
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .viz-root {
-    color-scheme: dark;
-    --page:           #0d0d0d;
-    --surface-1:      #1a1a19;
-    --surface-2:      #232322;
-    --text-primary:   #f0efec;
-    --text-secondary: #c3c2b7;
-    --text-muted:     #898781;
-    --grid:           #2c2c2a;
-    --axis:           #383835;
-    --border:         rgba(255, 255, 255, 0.10);
-    --accent:         #3987e5;
-    --series-1:       #3987e5;
-    --series-2:       #d95926;
-    --series-3:       #199e70;
-    --tier-1:         #9085e9;
-    --tier-2:         #d55181;
-    --tier-3:         #008300;
-  }
-}
+html { background: var(--page); }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -148,9 +130,9 @@ th { color: var(--text-muted); font-weight: 500; }
 tr.group td { color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--axis); padding-top: 10px; }
 
 .tooltip {
-  position: fixed; z-index: 20; pointer-events: none; background: var(--surface-1, #fff); color: var(--text-primary, #000);
-  border: 1px solid rgba(11, 11, 11, 0.12); border-radius: 8px; padding: 6px 8px; font: 12px/1.4 system-ui, sans-serif;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); min-width: 140px;
+  position: fixed; z-index: 20; pointer-events: none; background: var(--surface-2); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font: 12px/1.4 system-ui, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); min-width: 140px;
 }
 .tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; }
 .tooltip .tt-title { font-weight: 600; margin-bottom: 2px; }
@@ -223,3 +205,5 @@ table.sub-latency.has-tier { min-width: 1000px; }
 h3.table-title { font-size: 12px; margin: 14px 0 4px; color: var(--text-secondary); }
 .chart-off { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 24px; color: var(--text-secondary); font-size: 12px; border: 1px dashed var(--axis); border-radius: 8px; }
 .table-off { color: var(--text-secondary); font-size: 12px; padding: 8px 0; }
+.chip-note { color: var(--text-muted); margin-left: -2px; }
+.hint.st-note { margin: 6px 0 0; color: var(--text-primary); }
